@@ -14,6 +14,8 @@ class DiracSerializer(BaseSerializer[List[complex], Optional[str]]):
         Formats a complex phase into a string prefix (e.g. '+ ', '- ', '+ i', '- i').
         Returns None if the phase is too complex to represent simply.
         """
+        INV_SQRT2 = 1 / math.sqrt(2)
+
         if abs(norm_amp.real - 1.0) < self.EPSILON and abs(norm_amp.imag) < self.EPSILON:
             return "+"
         elif abs(norm_amp.real + 1.0) < self.EPSILON and abs(norm_amp.imag) < self.EPSILON:
@@ -22,6 +24,15 @@ class DiracSerializer(BaseSerializer[List[complex], Optional[str]]):
             return "+ i"
         elif abs(norm_amp.imag + 1.0) < self.EPSILON and abs(norm_amp.real) < self.EPSILON:
             return "- i"
+        elif abs(norm_amp.real - INV_SQRT2) < self.EPSILON and abs(norm_amp.imag - INV_SQRT2) < self.EPSILON:
+            return "+ e^(iπ/4)"
+        elif abs(norm_amp.real - INV_SQRT2) < self.EPSILON and abs(norm_amp.imag + INV_SQRT2) < self.EPSILON:
+            return "+ e^(-iπ/4)"
+        elif abs(norm_amp.real + INV_SQRT2) < self.EPSILON and abs(norm_amp.imag - INV_SQRT2) < self.EPSILON:
+            return "+ e^(i3π/4)"
+        elif abs(norm_amp.real + INV_SQRT2) < self.EPSILON and abs(norm_amp.imag + INV_SQRT2) < self.EPSILON:
+            return "+ e^(-i3π/4)"
+            
         return None
 
     def serialize(self, data: List[complex], num_qubits: int = 1) -> Optional[str]:
@@ -65,20 +76,22 @@ class DiracSerializer(BaseSerializer[List[complex], Optional[str]]):
                 if phase is None:
                     return None
                     
-                # Formatting tweaks (e.g. don't put '+' at the very beginning)
-                if not dirac_terms and phase == "+":
-                    dirac_terms.append(basis)
-                elif not dirac_terms and phase == "+ i":
-                    dirac_terms.append(f"i{basis}")
-                elif not dirac_terms and phase == "-":
-                    dirac_terms.append(f"-{basis}")
-                elif not dirac_terms and phase == "- i":
-                    dirac_terms.append(f"-i{basis}")
+                if not dirac_terms:
+                    # First term
+                    if phase == "+":
+                        dirac_terms.append(basis)
+                    elif phase == "-":
+                        dirac_terms.append(f"-{basis}")
+                    elif phase.startswith("+ "):
+                        dirac_terms.append(f"{phase[2:]}{basis}")
+                    elif phase.startswith("- "):
+                        dirac_terms.append(f"-{phase[2:]}{basis}")
                 else:
-                    if phase.endswith("i"):
-                        dirac_terms.append(f"{phase[0]} i{basis}")
-                    else:
+                    # Subsequent terms
+                    if phase == "+" or phase == "-":
                         dirac_terms.append(f"{phase} {basis}")
+                    else:
+                        dirac_terms.append(f"{phase}{basis}")
             else:
                 # If not all same mag, just handle pure real 1.0 and -1.0
                 phase = self._format_phase(amp)
