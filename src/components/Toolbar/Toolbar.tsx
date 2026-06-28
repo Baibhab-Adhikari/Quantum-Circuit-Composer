@@ -113,8 +113,8 @@ export default function Toolbar() {
       <div className="flex items-center justify-between w-full md:w-auto">
         {/* Left: Logo & Title */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center size-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 text-white font-bold text-sm select-none">
-            Q
+          <div className="flex items-center justify-center size-8 overflow-hidden select-none">
+            <img src="/logo.png" alt="Quantum Icon" className="w-full h-full object-contain dark:invert" />
           </div>
           <h1 className="text-base font-semibold tracking-tight text-foreground">
             Quantum Circuit Composer
