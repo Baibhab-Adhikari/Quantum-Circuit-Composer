@@ -28,3 +28,6 @@ class SimulationResultSchema(BaseModel):
     depth: int
     gate_count: int
     error_message: Optional[str] = None
+    dirac_notation: Optional[str] = None
+    qiskit_code: str = ""
+    openqasm: str = ""

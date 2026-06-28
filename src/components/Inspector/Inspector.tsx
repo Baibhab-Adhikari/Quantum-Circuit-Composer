@@ -2,20 +2,21 @@
 
 import { useCircuitStore } from '@/store/circuitStore';
 import { Button } from '@/components/ui/button';
+import { CodeViewer } from '@/components/ui/CodeViewer';
 
 export default function Inspector() {
-  const { isSimulating, simulationResult, runSimulation } = useCircuitStore();
+  const { isSimulating, simulationResult, runSimulation, operations } = useCircuitStore();
 
   return (
-    <div className="w-80 border-l border-border bg-card flex flex-col overflow-y-auto">
+    <div className="w-[450px] border-l border-border bg-card flex flex-col overflow-y-auto shrink-0">
       <div className="p-4 border-b border-border">
-        <h2 className="text-lg font-semibold tracking-tight">Analysis</h2>
+        <h2 className="text-lg font-semibold tracking-tight">Quantum Analysis</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Circuit execution & results
+          Circuit execution & representations
         </p>
       </div>
 
-      <div className="p-4 space-y-6 flex-1">
+      <div className="p-4 space-y-8 flex-1">
         {/* Simulation Action */}
         <div className="space-y-3">
           <Button 
@@ -39,7 +40,7 @@ export default function Inspector() {
 
         {/* Results Area */}
         {simulationResult && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Status / Errors */}
             {!simulationResult.success ? (
               <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
@@ -55,10 +56,10 @@ export default function Inspector() {
               </div>
             )}
 
-            {/* Statistics */}
+            {/* Execution Statistics */}
             {simulationResult.success && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">Circuit Statistics</h3>
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Statistics</h3>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-3 rounded bg-muted/50 border border-border/50">
                     <p className="text-xs text-muted-foreground">Depth</p>
@@ -69,16 +70,27 @@ export default function Inspector() {
                     <p className="text-lg font-mono">{simulationResult.gate_count}</p>
                   </div>
                 </div>
-              </div>
+              </section>
+            )}
+
+            {/* Dirac Notation */}
+            {simulationResult.dirac_notation && (
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Quantum State</h3>
+                <div className="p-4 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center min-h-20">
+                  <span className="text-xl font-serif text-primary tracking-wide">
+                    |ψ⟩ = {simulationResult.dirac_notation}
+                  </span>
+                </div>
+              </section>
             )}
 
             {/* Measurement Counts */}
             {simulationResult.counts && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium">Measurement Counts</h3>
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Measurement Probabilities</h3>
                 <div className="space-y-2">
                   {Object.entries(simulationResult.counts).map(([state, count]) => {
-                    // Calculate percentage assuming 1024 shots
                     const percentage = (count / 1024) * 100;
                     return (
                       <div key={state} className="space-y-1">
@@ -96,38 +108,61 @@ export default function Inspector() {
                     );
                   })}
                 </div>
-              </div>
+              </section>
             )}
 
-            {/* Statevector */}
+            {/* Raw Statevector */}
             {simulationResult.statevector && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium">Statevector</h3>
-                <div className="p-3 rounded bg-muted/50 border border-border/50 max-h-48 overflow-y-auto">
-                  <div className="space-y-1">
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Raw Statevector</h3>
+                <div className="p-3 rounded bg-muted/50 border border-border/50 max-h-64 overflow-y-auto custom-scrollbar">
+                  <div className="space-y-1.5">
                     {simulationResult.statevector.map((c, i) => {
-                      // Only show non-zero amplitudes for brevity
                       const magnitude = Math.sqrt(c.real * c.real + c.imag * c.imag);
                       if (magnitude < 1e-10) return null;
                       
-                      // Format binary state e.g., |00⟩
                       const binState = i.toString(2).padStart(Math.log2(simulationResult.statevector!.length), '0');
-                      
                       const sign = c.imag >= 0 ? '+' : '-';
                       const imagAbs = Math.abs(c.imag);
-                      const displayNum = `${c.real.toFixed(3)} ${sign} ${imagAbs.toFixed(3)}i`;
+                      const displayNum = `${c.real.toFixed(4)} ${sign} ${imagAbs.toFixed(4)}i`;
 
                       return (
-                        <div key={i} className="flex justify-between text-xs font-mono">
-                          <span>|{binState}⟩</span>
+                        <div key={i} className="flex justify-between items-center text-xs font-mono py-1 border-b border-border/30 last:border-0">
+                          <span className="text-primary font-bold">|{binState}⟩</span>
                           <span className="text-muted-foreground">{displayNum}</span>
                         </div>
                       );
                     })}
                   </div>
                 </div>
-              </div>
+              </section>
             )}
+
+            {/* Qiskit Code Generation */}
+            {simulationResult.qiskit_code && (
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Qiskit Code</h3>
+                <CodeViewer code={simulationResult.qiskit_code} language="python" title="circuit.py" />
+              </section>
+            )}
+
+            {/* OpenQASM Generation */}
+            {simulationResult.openqasm && (
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">OpenQASM</h3>
+                <CodeViewer code={simulationResult.openqasm} language="qasm" title="circuit.qasm" />
+              </section>
+            )}
+
+            {/* Circuit JSON */}
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Circuit JSON</h3>
+              <CodeViewer 
+                code={JSON.stringify(operations, null, 2)} 
+                language="json" 
+                title="operations.json" 
+              />
+            </section>
           </div>
         )}
       </div>

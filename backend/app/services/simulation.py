@@ -1,5 +1,8 @@
 from app.schemas.circuit import CircuitRequestSchema, SimulationResultSchema
 from app.adapters.qiskit_adapter import QiskitAdapter
+from app.serializers.dirac import DiracSerializer
+from app.serializers.qiskit_code import QiskitCodeSerializer
+from app.serializers.openqasm import OpenQASMSerializer
 import logging
 
 logger = logging.getLogger(__name__)
@@ -7,9 +10,13 @@ logger = logging.getLogger(__name__)
 class SimulationService:
     def __init__(self):
         self.adapter = QiskitAdapter()
+        self.dirac_serializer = DiracSerializer()
+        self.qiskit_serializer = QiskitCodeSerializer()
+        self.openqasm_serializer = OpenQASMSerializer()
         
     def simulate_circuit(self, request: CircuitRequestSchema) -> SimulationResultSchema:
         try:
+            logger.info(f"Received simulation request for {len(request.qubits)} qubits, {len(request.operations)} operations")
             # Build quantum circuit via adapter
             qc = self.adapter.build_circuit(request)
             
@@ -37,16 +44,29 @@ class SimulationService:
             # counts dictionary has keys like '00', '11'
             counts = result_data.get('counts')
             
+            # Generate representations
+            logger.info("Generating representations (Qiskit Code, OpenQASM)")
+            qiskit_code = self.qiskit_serializer.serialize(request)
+            openqasm_code = self.openqasm_serializer.serialize(qc)
+            
+            dirac_notation = None
+            if statevector:
+                logger.info("Generating Dirac notation from statevector")
+                dirac_notation = self.dirac_serializer.serialize(statevector, len(request.qubits))
+            
             return SimulationResultSchema(
                 success=True,
                 execution_time_ms=execution_time,
                 counts=counts,
                 statevector=formatted_statevector,
                 depth=depth,
-                gate_count=gate_count
+                gate_count=gate_count,
+                dirac_notation=dirac_notation,
+                qiskit_code=qiskit_code,
+                openqasm=openqasm_code
             )
         except Exception as e:
-            logger.error(f"Simulation failed: {str(e)}")
+            logger.error(f"Simulation failed: {str(e)}", exc_info=True)
             return SimulationResultSchema(
                 success=False,
                 execution_time_ms=0.0,

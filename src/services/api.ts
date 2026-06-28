@@ -8,6 +8,9 @@ export interface SimulationResult {
   depth: number;
   gate_count: number;
   error_message?: string;
+  dirac_notation?: string;
+  qiskit_code?: string;
+  openqasm?: string;
 }
 
 export interface CircuitPayload {

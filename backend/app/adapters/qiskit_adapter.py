@@ -4,6 +4,9 @@ from qiskit_aer import AerSimulator
 import time
 from typing import Dict, Any, Tuple
 from app.schemas.circuit import CircuitRequestSchema
+import logging
+
+logger = logging.getLogger(__name__)
 
 class QiskitAdapter:
     def __init__(self):
@@ -11,9 +14,10 @@ class QiskitAdapter:
         
     def build_circuit(self, request: CircuitRequestSchema) -> QuantumCircuit:
         num_qubits = len(request.qubits)
-        # We need classical bits only if there are measurements
         has_measurements = any(op.type == 'Measure' for op in request.operations)
         num_cbits = num_qubits if has_measurements else 0
+        
+        logger.info(f"Building QuantumCircuit with {num_qubits} qubits and {num_cbits} cbits")
         
         qc = QuantumCircuit(num_qubits, num_cbits)
         
@@ -57,6 +61,7 @@ class QiskitAdapter:
 
     def execute(self, qc: QuantumCircuit) -> Tuple[Dict[str, Any], float]:
         start_time = time.time()
+        logger.info(f"Starting execution on AerSimulator (depth={qc.depth()})")
         
         # Determine simulation method based on measurements
         # If measurements exist, run shots to get counts
@@ -80,5 +85,6 @@ class QiskitAdapter:
             result_data['statevector'] = statevector.data.tolist()
             
         execution_time = (time.time() - start_time) * 1000  # ms
+        logger.info(f"Execution completed in {execution_time:.2f} ms")
         
         return result_data, execution_time

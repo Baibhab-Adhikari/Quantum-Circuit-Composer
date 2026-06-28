@@ -1,6 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router as api_router
+import logging
+import sys
+
+# Configure root logger for stdout (Docker/Container friendly)
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Quantum Circuit Composer API",
@@ -19,3 +30,5 @@ app.add_middleware(
 
 # Mount the router
 app.include_router(api_router)
+
+logger.info("Quantum Circuit Composer Backend Initialized")
