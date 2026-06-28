@@ -4,9 +4,10 @@ from app.api.routes import router as api_router
 import logging
 import sys
 
-# Configure root logger for stdout (Docker/Container friendly)
+# Configure root logger to write to a file to keep terminal clean
 logging.basicConfig(
-    stream=sys.stdout,
+    filename="app.log",
+    filemode="a",
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
