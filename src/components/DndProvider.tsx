@@ -13,6 +13,9 @@ import {
 } from '@dnd-kit/core';
 import { useCircuitStore } from '@/store/circuitStore';
 import { GATE_MAP } from '@/constants/gates';
+import { validatePlacement } from '@/utils/validation';
+import { GateInstance } from '@/types/circuit';
+import { toast } from 'sonner';
 
 const dropAnimation = {
   sideEffects: defaultDropAnimationSideEffects({
@@ -57,50 +60,67 @@ export default function DndProvider({ children }: { children: React.ReactNode })
     const { row, col } = dropData;
     const store = useCircuitStore.getState();
 
-    // Helper to check if a cell is occupied
-    const isOccupied = (r: number, c: number, ignoreGateId?: string) => {
-      if (
-        store.placementSession?.controlsPlaced.some(p => p.row === r && p.col === c) ||
-        store.placementSession?.targetsPlaced.some(p => p.row === r && p.col === c)
-      ) {
-        return true;
-      }
-      return store.operations.some((op) => {
-        if (op.id === ignoreGateId) return false;
-        if (op.targets.some(tgt => tgt.row === r && tgt.col === c)) return true;
-        if (op.controls.some(ctrl => ctrl.row === r && ctrl.col === c)) return true;
-        return false;
-      });
-    };
-
     if (dragData.source === 'palette') {
       const gateType = dragData.gateType;
-      // Use the generic placement pipeline!
-      store.startPlacement(gateType);
-      store.handleGridClick(row, col);
+      const def = GATE_MAP.get(gateType);
+      if (!def) return;
+      
+      const newControls: {row: number, col: number}[] = [];
+      const newTargets: {row: number, col: number}[] = [];
+      
+      let currentRow = row;
+      for (let i = 0; i < def.numControls; i++) {
+        newControls.push({ row: currentRow++, col });
+      }
+      for (let i = 0; i < def.numTargets; i++) {
+        newTargets.push({ row: currentRow++, col });
+      }
+
+      const proposedGate: GateInstance = {
+        id: `gate-${Date.now()}`,
+        type: gateType,
+        targets: newTargets,
+        controls: newControls
+      };
+
+      const result = validatePlacement(proposedGate, store);
+      if (!result.valid) {
+        toast.error('Invalid Placement', {
+          description: result.reason,
+          duration: 3000,
+        });
+        return;
+      }
+
+      // If valid, fully place the gate
+      store.placeGate(proposedGate);
+
     } else if (dragData.source === 'grid') {
       const gateId = dragData.gateId;
       const gate = store.operations.find((o) => o.id === gateId);
       if (!gate) return;
 
       const rowOffset = row - gate.targets[0].row;
-      let isValid = true;
 
       const newTargets = gate.targets.map(t => ({ row: t.row + rowOffset, col }));
       const newControls = gate.controls.map(c => ({ row: c.row + rowOffset, col }));
 
-      for (const t of newTargets) {
-        if (t.row < 0 || t.row >= store.qubits.length) isValid = false;
-        if (isOccupied(t.row, t.col, gateId)) isValid = false;
-      }
-      for (const c of newControls) {
-        if (c.row < 0 || c.row >= store.qubits.length) isValid = false;
-        if (isOccupied(c.row, c.col, gateId)) isValid = false;
+      const proposedGate: GateInstance = {
+        ...gate,
+        targets: newTargets,
+        controls: newControls
+      };
+
+      const result = validatePlacement(proposedGate, store, gateId);
+      if (!result.valid) {
+        toast.error('Invalid Placement', {
+          description: result.reason,
+          duration: 3000,
+        });
+        return;
       }
 
-      if (isValid) {
-        store.moveGate(gateId, { row, col });
-      }
+      store.moveGate(gateId, { row, col });
     }
   };
 

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { CircuitState, CircuitActions, GateType, QubitState } from '@/types/circuit';
 import { GATE_MAP } from '@/constants/gates';
 import { simulateCircuit, type SimulationResult } from '@/services/api';
+import { validatePlacement } from '@/utils/validation';
+import { toast } from 'sonner';
 
 /** Default number of qubits and columns */
 const DEFAULT_NUM_QUBITS = 2;
@@ -33,7 +35,6 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
   numColumns: DEFAULT_NUM_COLUMNS,
   selectedGateType: null,
   zoom: 100,
-  placementSession: null,
   history: [[]],
   historyIndex: 0,
   isSimulating: false,
@@ -55,11 +56,6 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
 
   setSelectedGateType: (type) => {
     set({ selectedGateType: type });
-    if (type) {
-      get().startPlacement(type);
-    } else {
-      get().cancelPlacement();
-    }
   },
 
   setNumColumns: (n: number) =>
@@ -102,63 +98,45 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     _pushHistory(newOperations);
   },
 
-  startPlacement: (type) =>
-    set(() => ({
-      placementSession: {
-        gateType: type,
-        controlsPlaced: [],
-        targetsPlaced: [],
-      },
-    })),
-
   cancelPlacement: () =>
-    set(() => ({ placementSession: null, selectedGateType: null })),
+    set(() => ({ selectedGateType: null })),
 
   handleGridClick: (row, col) => {
     const state = get();
-    const session = state.placementSession;
-    if (!session) return;
+    const type = state.selectedGateType;
+    if (!type) return;
 
-    const def = GATE_MAP.get(session.gateType);
+    const def = GATE_MAP.get(type);
     if (!def) return;
 
-    const isOccupied = state.operations.some(op => 
-      op.targets.some(t => t.row === row && t.col === col) ||
-      op.controls.some(c => c.row === row && c.col === col)
-    ) || session.controlsPlaced.some(c => c.row === row && c.col === col)
-      || session.targetsPlaced.some(t => t.row === row && t.col === col);
+    const newControls: {row: number, col: number}[] = [];
+    const newTargets: {row: number, col: number}[] = [];
     
-    if (isOccupied) return;
-
-    const newSession = {
-      ...session,
-      controlsPlaced: [...session.controlsPlaced],
-      targetsPlaced: [...session.targetsPlaced],
-    };
-
-    if (newSession.controlsPlaced.length < def.numControls) {
-      newSession.controlsPlaced.push({ row, col });
-    } else if (newSession.targetsPlaced.length < def.numTargets) {
-      newSession.targetsPlaced.push({ row, col });
+    let currentRow = row;
+    for (let i = 0; i < def.numControls; i++) {
+      newControls.push({ row: currentRow++, col });
+    }
+    for (let i = 0; i < def.numTargets; i++) {
+      newTargets.push({ row: currentRow++, col });
     }
 
-    if (
-      newSession.controlsPlaced.length === def.numControls &&
-      newSession.targetsPlaced.length === def.numTargets
-    ) {
-      get().placeGate({
-        id: `gate-${Date.now()}`,
-        type: session.gateType,
-        targets: newSession.targetsPlaced,
-        controls: newSession.controlsPlaced,
-      });
-      set({ placementSession: null });
-      
-      if (get().selectedGateType) {
-        get().startPlacement(get().selectedGateType!);
-      }
+    const proposedGate = {
+      id: `gate-${Date.now()}`,
+      type: type,
+      targets: newTargets,
+      controls: newControls,
+    };
+
+    const result = validatePlacement(proposedGate, state);
+
+    if (result.valid) {
+      get().placeGate(proposedGate);
+      // Keep selectedGateType active for rapid placement!
     } else {
-      set({ placementSession: newSession });
+      toast.error('Invalid Placement', {
+        description: result.reason,
+        duration: 3000,
+      });
     }
   },
 
@@ -183,7 +161,6 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       numColumns: DEFAULT_NUM_COLUMNS,
       selectedGateType: null,
       zoom: 100,
-      placementSession: null,
       history: [[]],
       historyIndex: 0,
       isSimulating: false,
@@ -211,7 +188,6 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
         return {
           historyIndex: newIndex,
           operations: state.history[newIndex],
-          placementSession: null,
         };
       }
       return state;
@@ -224,7 +200,6 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
         return {
           historyIndex: newIndex,
           operations: state.history[newIndex],
-          placementSession: null,
         };
       }
       return state;

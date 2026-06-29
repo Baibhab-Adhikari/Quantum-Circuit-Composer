@@ -20,12 +20,7 @@ export interface GateInstance {
   controls: GridPosition[];
 }
 
-/** Represents an active drag or click placement workflow */
-export interface PlacementSession {
-  gateType: GateType;
-  controlsPlaced: GridPosition[];
-  targetsPlaced: GridPosition[];
-}
+
 
 /** A qubit in the circuit */
 export interface QubitState {
@@ -52,7 +47,6 @@ export interface CircuitState {
   numColumns: number;
   selectedGateType: GateType | null;
   zoom: number;
-  placementSession: PlacementSession | null;
   history: GateInstance[][];
   historyIndex: number;
   isSimulating: boolean;
@@ -71,7 +65,6 @@ export interface CircuitActions {
   moveGate: (id: string, newPosition: GridPosition) => void;
   
   // Generic Placement Logic
-  startPlacement: (type: GateType) => void;
   handleGridClick: (row: number, col: number) => void;
   cancelPlacement: () => void;
   
