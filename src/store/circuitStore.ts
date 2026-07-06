@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CircuitState, CircuitActions, GateType, QubitState } from '@/types/circuit';
+import type { CircuitState, CircuitActions, GateType, QubitState, GateInstance } from '@/types/circuit';
 import { GATE_MAP } from '@/constants/gates';
 import { simulateCircuit, type SimulationResult } from '@/services/api';
 import { validatePlacement } from '@/utils/validation';
@@ -40,6 +40,13 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
   isSimulating: false,
   simulationResult: null,
 
+  // Pending states
+  pendingParameterGate: null,
+  pendingUnitaryGate: null,
+
+  // UI state
+  activeActionMenuId: null,
+
   // Actions
   addQubit: () =>
     set((state) => ({
@@ -58,6 +65,10 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     set({ selectedGateType: type });
   },
 
+  setActiveActionMenu: (id) => {
+    set({ activeActionMenuId: id });
+  },
+
   setNumColumns: (n: number) =>
     set(() => ({
       numColumns: Math.max(1, n),
@@ -70,7 +81,13 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
 
   placeGate: (gate) => {
     const { operations, _pushHistory } = get();
-    _pushHistory([...operations, gate]);
+    // Overwrite if it exists, otherwise add
+    const exists = operations.some(op => op.id === gate.id);
+    if (exists) {
+      _pushHistory(operations.map(op => op.id === gate.id ? gate : op));
+    } else {
+      _pushHistory([...operations, gate]);
+    }
   },
 
   removeGate: (id) => {
@@ -120,7 +137,7 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       newTargets.push({ row: currentRow++, col });
     }
 
-    const proposedGate = {
+    const proposedGate: GateInstance = {
       id: `gate-${Date.now()}`,
       type: type,
       targets: newTargets,
@@ -130,12 +147,162 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     const result = validatePlacement(proposedGate, state);
 
     if (result.valid) {
-      get().placeGate(proposedGate);
+      if (def.isParameterized) {
+        // Trigger parameter dialog instead of placing directly
+        set({
+          pendingParameterGate: {
+            gate: proposedGate,
+            resolve: (params) => get().confirmParameterGate(params),
+            reject: () => get().cancelParameterGate(),
+          }
+        });
+      } else if (def.isCustomUnitary) {
+        // Trigger matrix dialog
+        set({
+          pendingUnitaryGate: {
+            gate: proposedGate,
+            resolve: (matrix) => get().confirmUnitaryGate(matrix),
+            reject: () => get().cancelUnitaryGate(),
+          }
+        });
+      } else {
+        get().placeGate(proposedGate);
+      }
       // Keep selectedGateType active for rapid placement!
     } else {
       toast.error('Invalid Placement', {
         description: result.reason,
         duration: 3000,
+      });
+    }
+  },
+
+  confirmParameterGate: (params) => {
+    const { pendingParameterGate, placeGate } = get();
+    if (!pendingParameterGate) return;
+    
+    const gate = { ...pendingParameterGate.gate, params };
+    placeGate(gate);
+    set({ pendingParameterGate: null });
+  },
+
+  cancelParameterGate: () => {
+    set({ pendingParameterGate: null });
+  },
+
+  confirmUnitaryGate: (matrix) => {
+    const { pendingUnitaryGate, placeGate } = get();
+    if (!pendingUnitaryGate) return;
+    
+    const gate = { ...pendingUnitaryGate.gate, matrix };
+    placeGate(gate);
+    set({ pendingUnitaryGate: null });
+  },
+
+  cancelUnitaryGate: () => {
+    set({ pendingUnitaryGate: null });
+  },
+
+  editGateParams: (id) => {
+    const gate = get().operations.find((op) => op.id === id);
+    if (!gate) return;
+    
+    const def = GATE_MAP.get(gate.type);
+    if (!def) return;
+
+    if (def.isParameterized) {
+      set({
+        pendingParameterGate: {
+          gate,
+          resolve: (params) => get().confirmParameterGate(params),
+          reject: () => get().cancelParameterGate(),
+        }
+      });
+    } else if (def.isCustomUnitary) {
+      set({
+        pendingUnitaryGate: {
+          gate,
+          resolve: (matrix) => get().confirmUnitaryGate(matrix),
+          reject: () => get().cancelUnitaryGate(),
+        }
+      });
+    }
+  },
+
+  decompose: async (gateId: string) => {
+    const state = get();
+    const gate = state.operations.find(op => op.id === gateId);
+    
+    if (!gate || gate.type !== 'U' || !gate.matrix) return;
+    
+    const targetQubit = gate.targets[0].row;
+    const startCol = gate.targets[0].col;
+    
+    // As per user instructions: The decomposed gate should occupy the original column plus the next two columns.
+    // If those columns are already occupied, simply shift the conflicting gates to the right starting from the conflict onward.
+    // However, the user also noted: "If the implementation becomes overly complex for this milestone, it is acceptable to require that the two subsequent columns be available and display a clear message if there is insufficient space."
+    // Let's implement the simpler check-availability first.
+    
+    // Check if the next two columns (startCol+1, startCol+2) are available on this row
+    const colsNeeded = [startCol, startCol + 1, startCol + 2];
+    
+    // Make sure we have enough columns overall
+    if (state.numColumns < startCol + 3) {
+       get().setNumColumns(startCol + 3);
+    }
+    
+    // Check for collisions
+    const hasCollision = state.operations.some(op => {
+      if (op.id === gateId) return false;
+      return op.targets.some(t => t.row === targetQubit && colsNeeded.includes(t.col)) ||
+             op.controls.some(c => c.row === targetQubit && colsNeeded.includes(c.col));
+    });
+
+    if (hasCollision) {
+      toast.error('Insufficient Space', {
+        description: 'Decomposing requires 3 empty consecutive columns. Please clear space to the right of the U gate.',
+        duration: 4000,
+      });
+      return;
+    }
+
+    try {
+      // Use dynamic import or direct fetch to avoid circular deps if needed, but we can use our api directly
+      const { decomposeGate } = await import('@/services/api');
+      
+      const res = await decomposeGate({
+        gate_id: gateId,
+        matrix: gate.matrix,
+        target_qubit: targetQubit,
+        column: startCol
+      });
+
+      if (!res.success) {
+        toast.error('Decomposition Failed', {
+          description: res.error_message || 'Unknown error',
+          duration: 4000,
+        });
+        return;
+      }
+
+      // We have the new gates, replace the old U gate
+      const newOps = state.operations.filter(op => op.id !== gateId);
+      
+      // Convert backend format to frontend GateInstance
+      const decomposedInstances: GateInstance[] = res.gates.map((g, i) => ({
+        id: `${gateId}-dec-${i}-${Date.now()}`,
+        type: g.type as GateType,
+        targets: [{ row: targetQubit, col: g.column }],
+        controls: [],
+        params: g.params
+      }));
+
+      get()._pushHistory([...newOps, ...decomposedInstances]);
+      
+      toast.success('Decomposed successfully!');
+    } catch (e: any) {
+      toast.error('Error during decomposition', {
+        description: e.message,
       });
     }
   },
@@ -165,6 +332,8 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       historyIndex: 0,
       isSimulating: false,
       simulationResult: null,
+      pendingParameterGate: null,
+      pendingUnitaryGate: null,
     })),
 
   _pushHistory: (newOperations) =>

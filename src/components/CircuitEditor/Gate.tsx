@@ -4,6 +4,7 @@ import { useCircuitStore } from '@/store/circuitStore';
 import type { GateInstance } from '@/types/circuit';
 import { GATE_MAP } from '@/constants/gates';
 import { useDraggable } from '@dnd-kit/core';
+import { formatAngle } from '@/utils/validation';
 
 interface GateProps {
   gate: GateInstance;
@@ -16,6 +17,7 @@ interface GateProps {
  */
 export default function Gate({ gate }: GateProps) {
   const removeGate = useCircuitStore((s) => s.removeGate);
+  const activeActionMenuId = useCircuitStore((s) => s.activeActionMenuId);
   const def = GATE_MAP.get(gate.type);
 
   if (!def) return null;
@@ -68,15 +70,30 @@ export default function Gate({ gate }: GateProps) {
       )}
 
       {/* Main Gate Symbol */}
-      <button
+      <div
         ref={setNodeRef}
         {...listeners}
         {...attributes}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // We could use context menu, but for now we'll just allow them to use edit button or similar.
+          // Wait, actually, let's use a simple double click or right click to trigger edit.
+          // Since it's a drag element, right click is safer.
+          if (def.isParameterized || def.isCustomUnitary) {
+            useCircuitStore.getState().editGateParams(gate.id);
+          }
+        }}
         onClick={(e) => {
           e.stopPropagation();
-          removeGate(gate.id);
+          const store = useCircuitStore.getState();
+          if (store.activeActionMenuId === gate.id) {
+            store.setActiveActionMenu(null);
+          } else {
+            store.setActiveActionMenu(gate.id);
+          }
         }}
-        className={`group relative z-10 flex items-center justify-center w-9 h-9 rounded shadow-sm border border-transparent transition-transform focus:outline-none ${
+        className={`group relative z-10 flex flex-col items-center justify-center w-9 h-9 rounded shadow-sm border border-transparent transition-transform focus:outline-none ${
           isDragging ? 'opacity-30 cursor-grabbing' : 'hover:scale-110 cursor-grab'
         }`}
         style={{
@@ -84,7 +101,6 @@ export default function Gate({ gate }: GateProps) {
           boxShadow: isTargetSymbol ? undefined : `0 2px 8px color-mix(in oklch, ${def.color}, transparent 80%)`,
           outline: isTargetSymbol ? undefined : `1px solid ${def.color}`,
         }}
-        title={`Remove ${def.name}`}
       >
         {isTargetSymbol ? (
           // CX/CCX Target Symbol (⊕)
@@ -104,24 +120,76 @@ export default function Gate({ gate }: GateProps) {
               <path d="M14 9h4v4" />
             </svg>
           </div>
-        ) : (
-          // Standard Gate Box
+        ) : def.isCustomUnitary ? (
           <span
-            className="text-sm font-bold font-mono leading-none"
+            className="text-sm font-bold font-mono leading-none flex items-center justify-center"
             style={{ color: def.color }}
           >
-            {def.abbreviation}
+            U
+            <span className="text-[8px] absolute bottom-0.5 right-0.5 opacity-70">
+              [ ]
+            </span>
           </span>
+        ) : (
+          // Standard Gate Box
+          <div className="flex flex-col items-center justify-center" style={{ color: def.color }}>
+            <span className="text-sm font-bold font-mono leading-none">
+              {def.abbreviation}
+            </span>
+            {def.isParameterized && gate.params?.theta !== undefined && (
+              <span className="text-[7px] font-mono mt-0.5 leading-none opacity-80" style={{ transform: 'scale(0.9)' }}>
+                {formatAngle(gate.params.theta)}
+              </span>
+            )}
+          </div>
         )}
 
-        {/* Hover overlay for removal */}
-        <div className="absolute inset-0 flex items-center justify-center rounded bg-destructive/90 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-          <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </div>
-      </button>
+        {/* Action menu tooltip (Click-to-open) */}
+        {activeActionMenuId === gate.id && (
+          <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1 rounded bg-popover text-popover-foreground shadow-md transition-opacity z-50 border border-border">
+            {(def.isParameterized || def.isCustomUnitary) && (
+              <button
+                className="p-1 rounded hover:bg-muted transition-colors"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  useCircuitStore.getState().editGateParams(gate.id);
+                  useCircuitStore.getState().setActiveActionMenu(null);
+                }}
+                title="Edit"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              </button>
+            )}
+            {def.isCustomUnitary && (
+              <button
+                className="p-1 rounded hover:bg-muted transition-colors text-blue-500"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  useCircuitStore.getState().decompose(gate.id);
+                  useCircuitStore.getState().setActiveActionMenu(null);
+                }}
+                title="Decompose (ZYZ)"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+              </button>
+            )}
+            <button
+              className="p-1 rounded hover:bg-destructive/20 text-destructive transition-colors"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                removeGate(gate.id);
+                useCircuitStore.getState().setActiveActionMenu(null);
+              }}
+              title="Remove"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
     </>
   );
 }

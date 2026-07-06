@@ -3,13 +3,15 @@
 import { useRef, useState, useEffect } from 'react';
 import { useCircuitStore } from '@/store/circuitStore';
 import CircuitGrid from './CircuitGrid';
+import ParameterDialog from './ParameterDialog';
+import UnitaryMatrixDialog from './UnitaryMatrixDialog';
 
 /**
  * Wrapper for the circuit editing area.
  * Provides scroll/overflow handling and visual container.
  */
 export default function CircuitEditor() {
-  const { zoom, setZoom } = useCircuitStore();
+  const { zoom, setZoom, cancelPlacement, undo, redo } = useCircuitStore();
   const containerRef = useRef<HTMLElement>(null);
   const [isSpaceDown, setIsSpaceDown] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -42,6 +44,36 @@ export default function CircuitEditor() {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        cancelPlacement();
+        useCircuitStore.getState().setActiveActionMenu(null);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      // Clear active action menu on any click outside
+      // The event propagation is stopped on the gate click itself, so this will only trigger for outside clicks
+      useCircuitStore.getState().setActiveActionMenu(null);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [cancelPlacement, undo, redo]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isSpaceDown && containerRef.current) {
@@ -100,6 +132,9 @@ export default function CircuitEditor() {
       >
         <CircuitGrid />
       </div>
+
+      <ParameterDialog />
+      <UnitaryMatrixDialog />
     </section>
   );
 }

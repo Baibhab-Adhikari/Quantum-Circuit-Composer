@@ -47,6 +47,25 @@ class QiskitAdapter:
             elif op.type == 'T':
                 for t in target_indices:
                     qc.t(t)
+            elif op.type == 'Rx':
+                for t in target_indices:
+                    if op.params and 'theta' in op.params:
+                        qc.rx(op.params['theta'], t)
+            elif op.type == 'Ry':
+                for t in target_indices:
+                    if op.params and 'theta' in op.params:
+                        qc.ry(op.params['theta'], t)
+            elif op.type == 'Rz':
+                for t in target_indices:
+                    if op.params and 'theta' in op.params:
+                        qc.rz(op.params['theta'], t)
+            elif op.type == 'U':
+                from qiskit.quantum_info import Operator
+                for t in target_indices:
+                    if op.matrix:
+                        # Convert matrix to complex array
+                        mat = [[complex(c.real, c.imag) for c in row] for row in op.matrix]
+                        qc.unitary(Operator(mat), t, label='U')
             elif op.type == 'CX':
                 if len(control_indices) == 1 and len(target_indices) == 1:
                     qc.cx(control_indices[0], target_indices[0])

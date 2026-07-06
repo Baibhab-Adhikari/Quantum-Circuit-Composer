@@ -92,8 +92,26 @@ export default function DndProvider({ children }: { children: React.ReactNode })
         return;
       }
 
-      // If valid, fully place the gate
-      store.placeGate(proposedGate);
+      // If valid, fully place the gate or trigger dialog
+      if (def.isParameterized) {
+        useCircuitStore.setState({
+          pendingParameterGate: {
+            gate: proposedGate,
+            resolve: (params) => store.confirmParameterGate(params),
+            reject: () => store.cancelParameterGate(),
+          }
+        });
+      } else if (def.isCustomUnitary) {
+        useCircuitStore.setState({
+          pendingUnitaryGate: {
+            gate: proposedGate,
+            resolve: (matrix) => store.confirmUnitaryGate(matrix),
+            reject: () => store.cancelUnitaryGate(),
+          }
+        });
+      } else {
+        store.placeGate(proposedGate);
+      }
 
     } else if (dragData.source === 'grid') {
       const gateId = dragData.gateId;

@@ -24,10 +24,17 @@ class QiskitCodeSerializer(BaseSerializer[CircuitRequestSchema, str]):
         lines = [
             "from qiskit import QuantumCircuit, transpile",
             "from qiskit_aer import AerSimulator",
+        ]
+        
+        has_u = any(op.type == 'U' for op in data.operations)
+        if has_u:
+            lines.append("from qiskit.quantum_info import Operator")
+            
+        lines.extend([
             "",
             f"# Initialize circuit with {num_qubits} qubits and {num_cbits} classical bits",
             f"qc = QuantumCircuit({num_qubits}, {num_cbits})"
-        ]
+        ])
         
         if data.operations:
             lines.append("")
@@ -44,6 +51,22 @@ class QiskitCodeSerializer(BaseSerializer[CircuitRequestSchema, str]):
                     qiskit_method = self.SINGLE_QUBIT_GATE_MAP[op.type]
                     for t in target_indices:
                         lines.append(f"qc.{qiskit_method}({t})")
+                elif op.type in ['Rx', 'Ry', 'Rz']:
+                    qiskit_method = op.type.lower()
+                    for t in target_indices:
+                        if op.params and 'theta' in op.params:
+                            theta = op.params['theta']
+                            lines.append(f"qc.{qiskit_method}({theta}, {t})")
+                elif op.type == 'U':
+                    has_u = True
+                    for t in target_indices:
+                        if op.matrix:
+                            # format matrix string
+                            mat_str = "["
+                            for r in op.matrix:
+                                mat_str += "[" + ", ".join([f"complex({c.real}, {c.imag})" for c in r]) + "], "
+                            mat_str = mat_str.rstrip(", ") + "]"
+                            lines.append(f"qc.unitary(Operator({mat_str}), {t}, label='U')")
                 elif op.type == 'CX':
                     if len(control_indices) == 1 and len(target_indices) == 1:
                         lines.append(f"qc.cx({control_indices[0]}, {target_indices[0]})")

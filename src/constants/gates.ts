@@ -87,6 +87,52 @@ export const GATE_DEFINITIONS: GateDefinition[] = [
     numTargets: 1,
     numControls: 2,
   },
+  // Parameterized single-qubit gates
+  {
+    type: 'Rx',
+    name: 'Rx Rotation',
+    abbreviation: 'Rx',
+    category: 'parameterized',
+    description: 'Rotation around X-axis by angle θ',
+    color: 'oklch(0.65 0.15 25)', // Coral
+    numTargets: 1,
+    numControls: 0,
+    isParameterized: true,
+  },
+  {
+    type: 'Ry',
+    name: 'Ry Rotation',
+    abbreviation: 'Ry',
+    category: 'parameterized',
+    description: 'Rotation around Y-axis by angle θ',
+    color: 'oklch(0.7 0.15 145)', // Lime
+    numTargets: 1,
+    numControls: 0,
+    isParameterized: true,
+  },
+  {
+    type: 'Rz',
+    name: 'Rz Rotation',
+    abbreviation: 'Rz',
+    category: 'parameterized',
+    description: 'Rotation around Z-axis by angle θ',
+    color: 'oklch(0.65 0.15 250)', // Sky Blue
+    numTargets: 1,
+    numControls: 0,
+    isParameterized: true,
+  },
+  // Custom Unitary
+  {
+    type: 'U',
+    name: 'Custom Unitary',
+    abbreviation: 'U',
+    category: 'custom-unitary',
+    description: 'Arbitrary 2x2 single-qubit unitary gate',
+    color: 'oklch(0.75 0.15 80)', // Gold
+    numTargets: 1,
+    numControls: 0,
+    isCustomUnitary: true,
+  },
   // Measurement
   {
     type: 'Measure',
@@ -104,6 +150,8 @@ export const GATE_DEFINITIONS: GateDefinition[] = [
 export const GATE_CATEGORIES: { label: string; category: GateCategory }[] = [
   { label: 'Single Qubit', category: 'single-qubit' },
   { label: 'Multi Qubit', category: 'multi-qubit' },
+  { label: 'Parameterized', category: 'parameterized' },
+  { label: 'Custom Unitary', category: 'custom-unitary' },
   { label: 'Measurement', category: 'measurement' },
 ];
 
