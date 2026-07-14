@@ -1,8 +1,8 @@
 /** Supported quantum gate types */
-export type GateType = 'H' | 'X' | 'Y' | 'Z' | 'S' | 'T' | 'CX' | 'CCX' | 'Measure' | 'Rx' | 'Ry' | 'Rz' | 'U';
+export type GateType = 'H' | 'X' | 'Y' | 'Z' | 'S' | 'T' | 'CX' | 'CCX' | 'Measure' | 'Rx' | 'Ry' | 'Rz' | 'U' | 'CU';
 
 /** Gate category for organizing in the palette */
-export type GateCategory = 'single-qubit' | 'multi-qubit' | 'measurement' | 'parameterized' | 'custom-unitary';
+export type GateCategory = 'single-qubit' | 'multi-qubit' | 'measurement' | 'parameterized' | 'custom-unitary' | 'controlled-unitary';
 
 import type { SimulationResult } from '@/services/api';
 
@@ -64,6 +64,12 @@ export interface CircuitState {
   pendingParameterGate: { gate: GateInstance; resolve: (params: Record<string, number>) => void; reject: () => void } | null;
   pendingUnitaryGate: { gate: GateInstance; resolve: (matrix: ComplexNumber[][]) => void; reject: () => void } | null;
   pendingMultiQubitGate: { gate: GateInstance; resolve: (gate: GateInstance) => void; reject: () => void } | null;
+  pendingCUGate: {
+    phase: 'qubit-selection' | 'matrix-input';
+    gate: GateInstance;
+    resolve: (gate: GateInstance) => void;
+    reject: () => void;
+  } | null;
 
   // UI state
   activeActionMenuId: string | null;
@@ -92,6 +98,10 @@ export interface CircuitActions {
   cancelUnitaryGate: () => void;
   confirmMultiQubitGate: (gate: GateInstance) => void;
   cancelMultiQubitGate: () => void;
+  confirmCUGateQubits: (gate: GateInstance) => void;
+  confirmCUGateMatrix: (matrix: ComplexNumber[][]) => void;
+  cancelCUGate: () => void;
+  decomposeCU: (gateId: string) => Promise<void>;
   editGateParams: (id: string) => void;
   decompose: (gateId: string) => Promise<void>;
 

@@ -6,6 +6,7 @@ import CircuitGrid from './CircuitGrid';
 import ParameterDialog from './ParameterDialog';
 import UnitaryMatrixDialog from './UnitaryMatrixDialog';
 import MultiQubitDialog from './MultiQubitDialog';
+import CUGateDialog from './CUGateDialog';
 
 /**
  * Wrapper for the circuit editing area.
@@ -137,6 +138,7 @@ export default function CircuitEditor() {
       <ParameterDialog />
       <UnitaryMatrixDialog />
       <MultiQubitDialog />
+      <CUGateDialog />
     </section>
   );
 }

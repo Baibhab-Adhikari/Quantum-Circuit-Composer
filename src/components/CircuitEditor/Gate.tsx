@@ -32,6 +32,7 @@ export default function Gate({ gate }: GateProps) {
   });
 
   const isTargetSymbol = gate.type === 'CX' || gate.type === 'CCX';
+  const isCUGate = gate.type === 'CU';
 
   const hasControls = gate.controls && gate.controls.length > 0;
 
@@ -80,7 +81,7 @@ export default function Gate({ gate }: GateProps) {
           // We could use context menu, but for now we'll just allow them to use edit button or similar.
           // Wait, actually, let's use a simple double click or right click to trigger edit.
           // Since it's a drag element, right click is safer.
-          if (def.isParameterized || def.isCustomUnitary || def.category === 'multi-qubit') {
+          if (def.isParameterized || def.isCustomUnitary || def.category === 'multi-qubit' || def.category === 'controlled-unitary') {
             useCircuitStore.getState().editGateParams(gate.id);
           }
         }}
@@ -107,6 +108,11 @@ export default function Gate({ gate }: GateProps) {
           <div className="relative flex items-center justify-center w-8 h-8 rounded-full border-[1.5px] border-foreground bg-background">
             <div className="absolute w-full h-[1.5px] bg-foreground" />
             <div className="absolute h-full w-[1.5px] bg-foreground" />
+          </div>
+        ) : isCUGate ? (
+          // CU Target Symbol (⊕ with U badge)
+          <div className="relative flex items-center justify-center w-8 h-8 rounded-full border-[1.5px] bg-background" style={{ borderColor: def.color }}>
+            <span className="text-xs font-bold font-mono" style={{ color: def.color }}>U</span>
           </div>
         ) : gate.type === 'Measure' ? (
           // Measurement Meter Symbol
@@ -147,7 +153,7 @@ export default function Gate({ gate }: GateProps) {
         {/* Action menu tooltip (Click-to-open) */}
         {activeActionMenuId === gate.id && (
           <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1 rounded bg-popover text-popover-foreground shadow-md transition-opacity z-50 border border-border">
-            {(def.isParameterized || def.isCustomUnitary || def.category === 'multi-qubit') && (
+            {(def.isParameterized || def.isCustomUnitary || def.category === 'multi-qubit' || def.category === 'controlled-unitary') && (
               <button
                 className="p-1 rounded hover:bg-muted transition-colors"
                 onPointerDown={(e) => {
@@ -160,7 +166,7 @@ export default function Gate({ gate }: GateProps) {
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
               </button>
             )}
-            {def.isCustomUnitary && (
+            {(def.isCustomUnitary && gate.type === 'U') && (
               <button
                 className="p-1 rounded hover:bg-muted transition-colors text-blue-500"
                 onPointerDown={(e) => {
@@ -169,6 +175,19 @@ export default function Gate({ gate }: GateProps) {
                   useCircuitStore.getState().setActiveActionMenu(null);
                 }}
                 title="Decompose (ZYZ)"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+              </button>
+            )}
+            {gate.type === 'CU' && (
+              <button
+                className="p-1 rounded hover:bg-muted transition-colors text-blue-500"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  useCircuitStore.getState().decomposeCU(gate.id);
+                  useCircuitStore.getState().setActiveActionMenu(null);
+                }}
+                title="Decompose (A→CX→B→CX→C)"
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
               </button>

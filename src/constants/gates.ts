@@ -133,6 +133,18 @@ export const GATE_DEFINITIONS: GateDefinition[] = [
     numControls: 0,
     isCustomUnitary: true,
   },
+  // Controlled Unitary
+  {
+    type: 'CU',
+    name: 'Controlled-U',
+    abbreviation: 'CU',
+    category: 'controlled-unitary',
+    description: 'Controlled arbitrary unitary — applies U when control is |1⟩',
+    color: 'oklch(0.7 0.2 45)',  // Warm orange-gold
+    numTargets: 1,
+    numControls: 1,
+    isCustomUnitary: true,
+  },
   // Measurement
   {
     type: 'Measure',
@@ -152,6 +164,7 @@ export const GATE_CATEGORIES: { label: string; category: GateCategory }[] = [
   { label: 'Multi Qubit', category: 'multi-qubit' },
   { label: 'Parameterized', category: 'parameterized' },
   { label: 'Custom Unitary', category: 'custom-unitary' },
+  { label: 'Controlled Unitary', category: 'controlled-unitary' },
   { label: 'Measurement', category: 'measurement' },
 ];
 

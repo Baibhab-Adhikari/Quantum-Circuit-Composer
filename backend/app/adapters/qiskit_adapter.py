@@ -66,6 +66,13 @@ class QiskitAdapter:
                         # Convert matrix to complex array
                         mat = [[complex(c.real, c.imag) for c in row] for row in op.matrix]
                         qc.unitary(Operator(mat), t, label='U')
+            elif op.type == 'CU':
+                from qiskit.quantum_info import Operator
+                from qiskit.circuit.library import UnitaryGate
+                if len(control_indices) == 1 and len(target_indices) == 1 and op.matrix:
+                    mat = [[complex(c.real, c.imag) for c in row] for row in op.matrix]
+                    cu_gate = UnitaryGate(mat, label='U').control(1)
+                    qc.append(cu_gate, [control_indices[0], target_indices[0]])
             elif op.type == 'CX':
                 if len(control_indices) == 1 and len(target_indices) == 1:
                     qc.cx(control_indices[0], target_indices[0])
@@ -90,17 +97,21 @@ class QiskitAdapter:
         result_data = {}
         
         if has_measurements:
+            from qiskit import transpile
+            qc_transpiled = transpile(qc, self.simulator)
             # Run simulation with 1024 shots
-            job = self.simulator.run(qc, shots=1024)
+            job = self.simulator.run(qc_transpiled, shots=1024)
             result = job.result()
-            counts = result.get_counts(qc)
+            counts = result.get_counts(qc_transpiled)
             result_data['counts'] = counts
         else:
             # Append statevector saving instruction
             qc.save_statevector()
-            job = self.simulator.run(qc)
+            from qiskit import transpile
+            qc_transpiled = transpile(qc, self.simulator)
+            job = self.simulator.run(qc_transpiled)
             result = job.result()
-            statevector = result.get_statevector(qc)
+            statevector = result.get_statevector(qc_transpiled)
             result_data['statevector'] = statevector.data.tolist()
             
         execution_time = (time.time() - start_time) * 1000  # ms

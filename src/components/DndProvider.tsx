@@ -101,6 +101,15 @@ export default function DndProvider({ children }: { children: React.ReactNode })
             reject: () => store.cancelParameterGate(),
           }
         });
+      } else if (def.category === 'controlled-unitary') {
+        useCircuitStore.setState({
+          pendingCUGate: {
+            phase: 'qubit-selection',
+            gate: proposedGate,
+            resolve: (gate) => store.confirmCUGateMatrix(gate.matrix!),
+            reject: () => store.cancelCUGate(),
+          }
+        });
       } else if (def.isCustomUnitary) {
         useCircuitStore.setState({
           pendingUnitaryGate: {

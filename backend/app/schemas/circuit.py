@@ -53,3 +53,29 @@ class DecomposeResultSchema(BaseModel):
     success: bool
     gates: List[DecomposedGateSchema] = Field(default_factory=list)
     error_message: Optional[str] = None
+
+# --- Controlled-U Decomposition Schemas ---
+
+class CUDecomposeRequestSchema(BaseModel):
+    gate_id: str
+    matrix: List[List[ComplexNumberSchema]]
+    control_qubit: int
+    target_qubit: int
+    column: int
+
+class CUDecomposedGateSchema(BaseModel):
+    """A gate in the CU decomposition output. May be single-qubit or CX."""
+    type: str
+    params: Optional[Dict[str, float]] = None
+    column: int
+    target_qubit: int
+    control_qubit: Optional[int] = None  # Only set for CX gates
+
+class CUDecomposeResultSchema(BaseModel):
+    success: bool
+    gates: List[CUDecomposedGateSchema] = Field(default_factory=list)
+    euler_angles: Optional[Dict[str, float]] = None
+    global_phase: Optional[float] = None
+    abc_identity_error: Optional[float] = None
+    axbxc_unitary_error: Optional[float] = None
+    error_message: Optional[str] = None

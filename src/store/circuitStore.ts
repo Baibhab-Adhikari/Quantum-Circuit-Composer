@@ -44,6 +44,7 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
   pendingParameterGate: null,
   pendingUnitaryGate: null,
   pendingMultiQubitGate: null,
+  pendingCUGate: null,
 
   // UI state
   activeActionMenuId: null,
@@ -157,6 +158,16 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
             reject: () => get().cancelParameterGate(),
           }
         });
+      } else if (def.category === 'controlled-unitary') {
+        // CU gate: two-phase flow — first qubit selection, then matrix input
+        set({
+          pendingCUGate: {
+            phase: 'qubit-selection',
+            gate: proposedGate,
+            resolve: (gate) => get().confirmCUGateMatrix(gate.matrix!),
+            reject: () => get().cancelCUGate(),
+          }
+        });
       } else if (def.isCustomUnitary) {
         // Trigger matrix dialog
         set({
@@ -233,6 +244,42 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     set({ pendingMultiQubitGate: null });
   },
 
+  confirmCUGateQubits: (gate) => {
+    const { pendingCUGate } = get();
+    if (!pendingCUGate) return;
+
+    const result = validatePlacement(gate, get(), gate.id);
+    if (!result.valid) {
+      toast.error('Invalid Placement', {
+        description: result.reason,
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Advance to matrix-input phase with updated qubit positions
+    set({
+      pendingCUGate: {
+        ...pendingCUGate,
+        phase: 'matrix-input',
+        gate,
+      }
+    });
+  },
+
+  confirmCUGateMatrix: (matrix) => {
+    const { pendingCUGate, placeGate } = get();
+    if (!pendingCUGate) return;
+
+    const gate = { ...pendingCUGate.gate, matrix };
+    placeGate(gate);
+    set({ pendingCUGate: null });
+  },
+
+  cancelCUGate: () => {
+    set({ pendingCUGate: null });
+  },
+
   editGateParams: (id) => {
     const gate = get().operations.find((op) => op.id === id);
     if (!gate) return;
@@ -246,6 +293,16 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
           gate,
           resolve: (params) => get().confirmParameterGate(params),
           reject: () => get().cancelParameterGate(),
+        }
+      });
+    } else if (def.category === 'controlled-unitary') {
+      // Re-open the two-phase CU dialog for editing
+      set({
+        pendingCUGate: {
+          phase: 'qubit-selection',
+          gate,
+          resolve: (g) => get().confirmCUGateMatrix(g.matrix!),
+          reject: () => get().cancelCUGate(),
         }
       });
     } else if (def.isCustomUnitary) {
@@ -275,33 +332,51 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     
     const targetQubit = gate.targets[0].row;
     const startCol = gate.targets[0].col;
+    const numDecomposedCols = 3;
     
-    // As per user instructions: The decomposed gate should occupy the original column plus the next two columns.
-    // If those columns are already occupied, simply shift the conflicting gates to the right starting from the conflict onward.
-    // However, the user also noted: "If the implementation becomes overly complex for this milestone, it is acceptable to require that the two subsequent columns be available and display a clear message if there is insufficient space."
-    // Let's implement the simpler check-availability first.
-    
-    // Check if the next two columns (startCol+1, startCol+2) are available on this row
-    const colsNeeded = [startCol, startCol + 1, startCol + 2];
+    // Auto-expand: shift conflicting gates to the right
+    const colsNeeded = Array.from({ length: numDecomposedCols }, (_, i) => startCol + i);
     
     // Make sure we have enough columns overall
-    if (state.numColumns < startCol + 3) {
-       get().setNumColumns(startCol + 3);
+    if (state.numColumns < startCol + numDecomposedCols) {
+       get().setNumColumns(startCol + numDecomposedCols);
     }
     
-    // Check for collisions
-    const hasCollision = state.operations.some(op => {
+    // Find operations that conflict and shift them right
+    let opsToShift = state.operations.filter(op => {
       if (op.id === gateId) return false;
       return op.targets.some(t => t.row === targetQubit && colsNeeded.includes(t.col)) ||
              op.controls.some(c => c.row === targetQubit && colsNeeded.includes(c.col));
     });
 
-    if (hasCollision) {
-      toast.error('Insufficient Space', {
-        description: 'Decomposing requires 3 empty consecutive columns. Please clear space to the right of the U gate.',
-        duration: 4000,
-      });
-      return;
+    // Calculate how many columns to shift: find min conflicting col and shift everything from there
+    let shiftedOps = state.operations.map(op => {
+      if (op.id === gateId) return op;
+      // Check if any of this op's nodes are on the target row at or after startCol
+      const hasConflict = [...op.targets, ...op.controls].some(
+        n => n.row === targetQubit && n.col >= startCol && n.col < startCol + numDecomposedCols
+      );
+      if (!hasConflict) return op;
+      // Shift all nodes of this operation by numDecomposedCols - 1 (the original gate occupies 1 col already)
+      const shift = numDecomposedCols - 1;
+      return {
+        ...op,
+        targets: op.targets.map(t => ({ ...t, col: t.col + shift })),
+        controls: op.controls.map(c => ({ ...c, col: c.col + shift })),
+      };
+    });
+
+    // Update numColumns if shifted gates exceed current depth
+    const maxCol = shiftedOps.reduce((max, op) => {
+      const opMaxCol = Math.max(
+        ...op.targets.map(t => t.col),
+        ...op.controls.map(c => c.col),
+        0
+      );
+      return Math.max(max, opMaxCol);
+    }, 0);
+    if (maxCol >= get().numColumns) {
+      get().setNumColumns(maxCol + 1);
     }
 
     try {
@@ -324,7 +399,7 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       }
 
       // We have the new gates, replace the old U gate
-      const newOps = state.operations.filter(op => op.id !== gateId);
+      const newOps = shiftedOps.filter(op => op.id !== gateId);
       
       // Convert backend format to frontend GateInstance
       const decomposedInstances: GateInstance[] = res.gates.map((g, i) => ({
@@ -340,6 +415,92 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       toast.success('Decomposed successfully!');
     } catch (e: any) {
       toast.error('Error during decomposition', {
+        description: e.message,
+      });
+    }
+  },
+
+  decomposeCU: async (gateId: string) => {
+    const state = get();
+    const gate = state.operations.find(op => op.id === gateId);
+    
+    if (!gate || gate.type !== 'CU' || !gate.matrix) return;
+    
+    const targetQubit = gate.targets[0].row;
+    const controlQubit = gate.controls[0].row;
+    const startCol = gate.targets[0].col;
+    const numDecomposedCols = 7;
+    
+    // Make sure we have enough columns
+    if (state.numColumns < startCol + numDecomposedCols) {
+      get().setNumColumns(startCol + numDecomposedCols);
+    }
+    
+    // Auto-expand: shift conflicting gates on BOTH control and target rows
+    const affectedRows = new Set([targetQubit, controlQubit]);
+    const shiftedOps = state.operations.map(op => {
+      if (op.id === gateId) return op;
+      const hasConflict = [...op.targets, ...op.controls].some(
+        n => affectedRows.has(n.row) && n.col >= startCol && n.col < startCol + numDecomposedCols
+      );
+      if (!hasConflict) return op;
+      const shift = numDecomposedCols - 1;
+      return {
+        ...op,
+        targets: op.targets.map(t => ({ ...t, col: t.col + shift })),
+        controls: op.controls.map(c => ({ ...c, col: c.col + shift })),
+      };
+    });
+
+    // Update numColumns if shifted gates exceed current depth
+    const maxCol = shiftedOps.reduce((max, op) => {
+      const opMaxCol = Math.max(
+        ...op.targets.map(t => t.col),
+        ...op.controls.map(c => c.col),
+        0
+      );
+      return Math.max(max, opMaxCol);
+    }, 0);
+    if (maxCol >= get().numColumns) {
+      get().setNumColumns(maxCol + 1);
+    }
+
+    try {
+      const { decomposeControlledUnitary } = await import('@/services/api');
+      
+      const res = await decomposeControlledUnitary({
+        gate_id: gateId,
+        matrix: gate.matrix,
+        control_qubit: controlQubit,
+        target_qubit: targetQubit,
+        column: startCol
+      });
+
+      if (!res.success) {
+        toast.error('CU Decomposition Failed', {
+          description: res.error_message || 'Unknown error',
+          duration: 4000,
+        });
+        return;
+      }
+
+      const newOps = shiftedOps.filter(op => op.id !== gateId);
+      
+      const decomposedInstances: GateInstance[] = res.gates.map((g, i) => ({
+        id: `${gateId}-cu-dec-${i}-${Date.now()}`,
+        type: g.type as GateType,
+        targets: [{ row: g.target_qubit, col: g.column }],
+        controls: g.control_qubit !== undefined && g.control_qubit !== null
+          ? [{ row: g.control_qubit, col: g.column }]
+          : [],
+        params: g.params
+      }));
+
+      get()._pushHistory([...newOps, ...decomposedInstances]);
+      
+      toast.success('CU decomposed into A→CX→B→CX→C!');
+    } catch (e: any) {
+      toast.error('Error during CU decomposition', {
         description: e.message,
       });
     }
@@ -373,6 +534,7 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       pendingParameterGate: null,
       pendingUnitaryGate: null,
       pendingMultiQubitGate: null,
+      pendingCUGate: null,
     })),
 
   _pushHistory: (newOperations) =>

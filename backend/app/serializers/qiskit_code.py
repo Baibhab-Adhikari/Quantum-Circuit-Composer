@@ -67,6 +67,16 @@ class QiskitCodeSerializer(BaseSerializer[CircuitRequestSchema, str]):
                                 mat_str += "[" + ", ".join([f"complex({c.real}, {c.imag})" for c in r]) + "], "
                             mat_str = mat_str.rstrip(", ") + "]"
                             lines.append(f"qc.unitary(Operator({mat_str}), {t}, label='U')")
+                elif op.type == 'CU':
+                    has_u = True
+                    if len(control_indices) == 1 and len(target_indices) == 1:
+                        if op.matrix:
+                            mat_str = "["
+                            for r in op.matrix:
+                                mat_str += "[" + ", ".join([f"complex({c.real}, {c.imag})" for c in r]) + "], "
+                            mat_str = mat_str.rstrip(", ") + "]"
+                            lines.append(f"cu_gate = UnitaryGate(Operator({mat_str}), label='U').control(1)")
+                            lines.append(f"qc.append(cu_gate, [{control_indices[0]}, {target_indices[0]}])")
                 elif op.type == 'CX':
                     if len(control_indices) == 1 and len(target_indices) == 1:
                         lines.append(f"qc.cx({control_indices[0]}, {target_indices[0]})")

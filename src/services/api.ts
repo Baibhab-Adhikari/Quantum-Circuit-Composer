@@ -99,3 +99,54 @@ export async function decomposeGate(request: DecomposeRequest): Promise<Decompos
   }
 }
 
+// --- Controlled-U Decomposition ---
+
+export interface CUDecomposeRequest {
+  gate_id: string;
+  matrix: { real: number; imag: number }[][];
+  control_qubit: number;
+  target_qubit: number;
+  column: number;
+}
+
+export interface CUDecomposedGate {
+  type: string;
+  params?: Record<string, number>;
+  column: number;
+  target_qubit: number;
+  control_qubit?: number;
+}
+
+export interface CUDecomposeResult {
+  success: boolean;
+  gates: CUDecomposedGate[];
+  euler_angles?: Record<string, number>;
+  global_phase?: number;
+  abc_identity_error?: number;
+  axbxc_unitary_error?: number;
+  error_message?: string;
+}
+
+export async function decomposeControlledUnitary(request: CUDecomposeRequest): Promise<CUDecomposeResult> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/decompose-cu`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!res.ok) {
+      throw new Error(`API error: ${res.statusText}`);
+    }
+
+    return await res.json();
+  } catch (error: any) {
+    return {
+      success: false,
+      gates: [],
+      error_message: error.message || 'Unknown error occurred',
+    };
+  }
+}
