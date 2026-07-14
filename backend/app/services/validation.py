@@ -15,7 +15,7 @@ def validate_complex_matrix(matrix: List[List[ComplexNumberSchema]]) -> Tuple[bo
             return False, "Matrix must have exactly 2 columns."
     return True, ""
 
-def validate_unitarity(matrix: List[List[ComplexNumberSchema]], tolerance: float = 1e-6) -> Tuple[bool, str]:
+def validate_unitarity(matrix: List[List[ComplexNumberSchema]], tolerance: float = 1e-4) -> Tuple[bool, str]:
     """Validates that a 2x2 matrix is unitary (U†U ≈ I)."""
     valid_dim, msg = validate_complex_matrix(matrix)
     if not valid_dim:

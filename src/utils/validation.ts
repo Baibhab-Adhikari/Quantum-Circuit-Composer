@@ -68,9 +68,12 @@ export function validatePlacement(
 // Math Validation Utilities
 
 import type { ComplexNumber } from '@/types/circuit';
+export const UI_EPSILON = 1e-4; // Generous tolerance for user inputs (e.g. 0.8660, 0.7071)
+export const SIM_EPSILON = 1e-10; // Stricter tolerance for simulation/backend use
 
-const EPSILON = 1e-6;
-
+export function nearlyEqual(a: number, b: number, epsilon: number = UI_EPSILON): boolean {
+  return Math.abs(a - b) < epsilon;
+}
 export function complexAdd(a: ComplexNumber, b: ComplexNumber): ComplexNumber {
   return { real: a.real + b.real, imag: a.imag + b.imag };
 }
@@ -194,7 +197,7 @@ export function parseComplexNumber(input: string): ComplexNumber | null {
   return { real, imag };
 }
 
-export function isUnitary(matrix: ComplexNumber[][]): boolean {
+export function isUnitary(matrix: ComplexNumber[][], epsilon: number = UI_EPSILON): boolean {
   if (matrix.length !== 2 || matrix[0].length !== 2 || matrix[1].length !== 2) return false;
 
   // Compute U† U = I
@@ -218,10 +221,10 @@ export function isUnitary(matrix: ComplexNumber[][]): boolean {
   ];
 
   // Check if C is approximately identity
-  const isI00 = Math.abs(C[0][0].real - 1) < EPSILON && Math.abs(C[0][0].imag) < EPSILON;
-  const isI11 = Math.abs(C[1][1].real - 1) < EPSILON && Math.abs(C[1][1].imag) < EPSILON;
-  const isI01 = Math.abs(C[0][1].real) < EPSILON && Math.abs(C[0][1].imag) < EPSILON;
-  const isI10 = Math.abs(C[1][0].real) < EPSILON && Math.abs(C[1][0].imag) < EPSILON;
+  const isI00 = nearlyEqual(C[0][0].real, 1, epsilon) && nearlyEqual(C[0][0].imag, 0, epsilon);
+  const isI11 = nearlyEqual(C[1][1].real, 1, epsilon) && nearlyEqual(C[1][1].imag, 0, epsilon);
+  const isI01 = nearlyEqual(C[0][1].real, 0, epsilon) && nearlyEqual(C[0][1].imag, 0, epsilon);
+  const isI10 = nearlyEqual(C[1][0].real, 0, epsilon) && nearlyEqual(C[1][0].imag, 0, epsilon);
 
   return isI00 && isI11 && isI01 && isI10;
 }

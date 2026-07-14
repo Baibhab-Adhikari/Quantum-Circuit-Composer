@@ -43,6 +43,7 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
   // Pending states
   pendingParameterGate: null,
   pendingUnitaryGate: null,
+  pendingMultiQubitGate: null,
 
   // UI state
   activeActionMenuId: null,
@@ -165,6 +166,14 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
             reject: () => get().cancelUnitaryGate(),
           }
         });
+      } else if (def.category === 'multi-qubit') {
+        set({
+          pendingMultiQubitGate: {
+            gate: proposedGate,
+            resolve: (gate) => get().confirmMultiQubitGate(gate),
+            reject: () => get().cancelMultiQubitGate(),
+          }
+        });
       } else {
         get().placeGate(proposedGate);
       }
@@ -203,6 +212,27 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     set({ pendingUnitaryGate: null });
   },
 
+  confirmMultiQubitGate: (gate) => {
+    const { pendingMultiQubitGate, placeGate } = get();
+    if (!pendingMultiQubitGate) return;
+    
+    const result = validatePlacement(gate, get(), gate.id);
+    if (!result.valid) {
+      toast.error('Invalid Placement', {
+        description: result.reason,
+        duration: 3000,
+      });
+      return;
+    }
+
+    placeGate(gate);
+    set({ pendingMultiQubitGate: null });
+  },
+
+  cancelMultiQubitGate: () => {
+    set({ pendingMultiQubitGate: null });
+  },
+
   editGateParams: (id) => {
     const gate = get().operations.find((op) => op.id === id);
     if (!gate) return;
@@ -224,6 +254,14 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
           gate,
           resolve: (matrix) => get().confirmUnitaryGate(matrix),
           reject: () => get().cancelUnitaryGate(),
+        }
+      });
+    } else if (def.category === 'multi-qubit') {
+      set({
+        pendingMultiQubitGate: {
+          gate,
+          resolve: (newGate) => get().confirmMultiQubitGate(newGate),
+          reject: () => get().cancelMultiQubitGate(),
         }
       });
     }
@@ -334,6 +372,7 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       simulationResult: null,
       pendingParameterGate: null,
       pendingUnitaryGate: null,
+      pendingMultiQubitGate: null,
     })),
 
   _pushHistory: (newOperations) =>

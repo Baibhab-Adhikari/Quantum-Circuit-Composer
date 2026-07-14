@@ -109,6 +109,14 @@ export default function DndProvider({ children }: { children: React.ReactNode })
             reject: () => store.cancelUnitaryGate(),
           }
         });
+      } else if (def.category === 'multi-qubit') {
+        useCircuitStore.setState({
+          pendingMultiQubitGate: {
+            gate: proposedGate,
+            resolve: (gate) => store.confirmMultiQubitGate(gate),
+            reject: () => store.cancelMultiQubitGate(),
+          }
+        });
       } else {
         store.placeGate(proposedGate);
       }

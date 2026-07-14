@@ -80,7 +80,7 @@ export default function Gate({ gate }: GateProps) {
           // We could use context menu, but for now we'll just allow them to use edit button or similar.
           // Wait, actually, let's use a simple double click or right click to trigger edit.
           // Since it's a drag element, right click is safer.
-          if (def.isParameterized || def.isCustomUnitary) {
+          if (def.isParameterized || def.isCustomUnitary || def.category === 'multi-qubit') {
             useCircuitStore.getState().editGateParams(gate.id);
           }
         }}
@@ -147,7 +147,7 @@ export default function Gate({ gate }: GateProps) {
         {/* Action menu tooltip (Click-to-open) */}
         {activeActionMenuId === gate.id && (
           <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1 rounded bg-popover text-popover-foreground shadow-md transition-opacity z-50 border border-border">
-            {(def.isParameterized || def.isCustomUnitary) && (
+            {(def.isParameterized || def.isCustomUnitary || def.category === 'multi-qubit') && (
               <button
                 className="p-1 rounded hover:bg-muted transition-colors"
                 onPointerDown={(e) => {

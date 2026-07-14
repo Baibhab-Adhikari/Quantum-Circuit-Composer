@@ -63,6 +63,7 @@ export interface CircuitState {
   // Pending actions
   pendingParameterGate: { gate: GateInstance; resolve: (params: Record<string, number>) => void; reject: () => void } | null;
   pendingUnitaryGate: { gate: GateInstance; resolve: (matrix: ComplexNumber[][]) => void; reject: () => void } | null;
+  pendingMultiQubitGate: { gate: GateInstance; resolve: (gate: GateInstance) => void; reject: () => void } | null;
 
   // UI state
   activeActionMenuId: string | null;
@@ -89,6 +90,8 @@ export interface CircuitActions {
   cancelParameterGate: () => void;
   confirmUnitaryGate: (matrix: ComplexNumber[][]) => void;
   cancelUnitaryGate: () => void;
+  confirmMultiQubitGate: (gate: GateInstance) => void;
+  cancelMultiQubitGate: () => void;
   editGateParams: (id: string) => void;
   decompose: (gateId: string) => Promise<void>;
 
