@@ -919,4 +919,81 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       set({ isSimulating: false });
     }
   },
+
+  dumpQUA: () => {
+    const { operations, numColumns } = get();
+    
+    let quaCode = `# ----------------------------------------------------
+# Quantum Circuit Composer
+# Temporary QUA Preview Export
+#
+# This file is intended as an intermediate preview.
+#
+# Scheduling placeholders (B1/B2) are intentionally
+# emitted as comments because they do not yet map to
+# concrete QUA timing instructions.
+#
+# A future QUA adapter will translate these editor
+# operations into align()/wait() logic.
+# ----------------------------------------------------
+
+from qm.qua import *
+
+with program() as quantum_circuit:
+`;
+    let hasOperations = false;
+
+    // Filter to only single-qubit operations
+    const singleQubitOps = operations.filter(op => op.controls.length === 0);
+
+    for (let c = 0; c < numColumns; c++) {
+      // Find operations in this column
+      const opsInCol = singleQubitOps.filter(op => op.targets.some(t => t.col === c));
+      
+      if (opsInCol.length > 0) {
+        if (hasOperations) {
+          quaCode += "\n";
+        }
+        quaCode += `    # Column ${c}\n\n`;
+        for (const op of opsInCol) {
+          const row = op.targets[0].row;
+          const element = `q${row}`;
+          
+          if (op.type === 'Measure') {
+            quaCode += `    # Placeholder measurement.
+    # Integration weights, outputs and processing
+    # will be supplied by the future QUA adapter.
+    measure("readout", "${element}", None)\n`;
+          } else if (op.type === 'B1') {
+            quaCode += `    # B1 Bridge (Scheduling Placeholder)\n`;
+          } else if (op.type === 'B2') {
+            quaCode += `    # B2 Bridge (Scheduling Placeholder)\n`;
+          } else {
+            quaCode += `    play("${op.type}", "${element}")\n`;
+          }
+          hasOperations = true;
+        }
+      }
+    }
+
+    if (!hasOperations) {
+      quaCode += "    pass\n";
+    }
+
+    // Create a Blob and trigger download
+    const blob = new Blob([quaCode], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "qua_dump.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast.success("QUA dump generated!", {
+      description: "qua_dump.txt has been downloaded.",
+      duration: 3000,
+    });
+  },
 }));

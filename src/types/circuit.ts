@@ -112,4 +112,5 @@ export interface CircuitActions {
   runSimulation: () => Promise<void>;
   insertBridges: () => void;
   optimizeCircuit: () => Promise<void>;
+  dumpQUA: () => void;
 }

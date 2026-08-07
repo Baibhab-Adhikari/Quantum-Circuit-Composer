@@ -100,7 +100,7 @@ function IconClose({ className }: { className?: string }) {
 }
 
 export default function Toolbar() {
-  const { qubits, addQubit, removeQubit, resetCircuit, numColumns, setNumColumns, zoom, setZoom, undo, redo, history, historyIndex, optimizeCircuit, isSimulating } = useCircuitStore();
+  const { qubits, addQubit, removeQubit, resetCircuit, numColumns, setNumColumns, zoom, setZoom, undo, redo, history, historyIndex, optimizeCircuit, dumpQUA, isSimulating } = useCircuitStore();
   const { theme, toggleTheme } = useTheme();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -287,6 +287,23 @@ export default function Toolbar() {
             <span className="text-xs hidden sm:inline">{isSimulating ? 'Optimising…' : 'Optimise'}</span>
           </TooltipTrigger>
           <TooltipContent>Decompose all gates into Rz/Ry/Rz and insert delays</TooltipContent>
+        </Tooltip>
+
+        <div className="w-px h-5 bg-border mx-1" />
+
+        <Tooltip>
+          <TooltipTrigger
+            className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            onClick={() => dumpQUA()}
+          >
+            <svg className="size-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span className="text-xs hidden sm:inline">Dump QUA</span>
+          </TooltipTrigger>
+          <TooltipContent>Export single-qubit operations as QUA script</TooltipContent>
         </Tooltip>
 
         <div className="w-px h-5 bg-border mx-1" />
