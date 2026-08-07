@@ -145,6 +145,27 @@ export const GATE_DEFINITIONS: GateDefinition[] = [
     numControls: 1,
     isCustomUnitary: true,
   },
+  // Bridge operations (scheduling placeholders — NOT quantum gates)
+  {
+    type: 'B1',
+    name: 'Bridge 1',
+    abbreviation: 'B1',
+    category: 'bridge',
+    description: 'Scheduling placeholder — does not modify quantum state',
+    color: 'oklch(0.6 0.03 250)',   // Muted slate
+    numTargets: 1,
+    numControls: 0,
+  },
+  {
+    type: 'B2',
+    name: 'Bridge 2',
+    abbreviation: 'B2',
+    category: 'bridge',
+    description: 'Scheduling placeholder — does not modify quantum state',
+    color: 'oklch(0.6 0.03 200)',   // Muted teal-slate
+    numTargets: 1,
+    numControls: 0,
+  },
   // Measurement
   {
     type: 'Measure',

@@ -47,6 +47,11 @@ class QiskitCodeSerializer(BaseSerializer[CircuitRequestSchema, str]):
                 target_indices = [t.row for t in op.targets]
                 control_indices = [c.row for c in op.controls]
                 
+                # Bridge operations (B1, B2) are scheduling placeholders
+                # — omit them from generated Qiskit code.
+                if op.type in ('B1', 'B2'):
+                    continue
+
                 if op.type in self.SINGLE_QUBIT_GATE_MAP:
                     qiskit_method = self.SINGLE_QUBIT_GATE_MAP[op.type]
                     for t in target_indices:

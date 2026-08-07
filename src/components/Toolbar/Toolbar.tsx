@@ -100,7 +100,7 @@ function IconClose({ className }: { className?: string }) {
 }
 
 export default function Toolbar() {
-  const { qubits, addQubit, removeQubit, resetCircuit, numColumns, setNumColumns, zoom, setZoom, undo, redo, history, historyIndex } = useCircuitStore();
+  const { qubits, addQubit, removeQubit, resetCircuit, numColumns, setNumColumns, zoom, setZoom, undo, redo, history, historyIndex, optimizeCircuit, isSimulating } = useCircuitStore();
   const { theme, toggleTheme } = useTheme();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -271,6 +271,22 @@ export default function Toolbar() {
             <IconRedo className="size-4" />
           </TooltipTrigger>
           <TooltipContent>Redo</TooltipContent>
+        </Tooltip>
+
+        <div className="w-px h-5 bg-border mx-1" />
+
+        <Tooltip>
+          <TooltipTrigger
+            className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            onClick={() => optimizeCircuit()}
+            disabled={isSimulating}
+          >
+            <svg className="size-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+            <span className="text-xs hidden sm:inline">{isSimulating ? 'Optimising…' : 'Optimise'}</span>
+          </TooltipTrigger>
+          <TooltipContent>Decompose all gates into Rz/Ry/Rz and insert delays</TooltipContent>
         </Tooltip>
 
         <div className="w-px h-5 bg-border mx-1" />

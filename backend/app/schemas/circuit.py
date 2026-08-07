@@ -79,3 +79,23 @@ class CUDecomposeResultSchema(BaseModel):
     abc_identity_error: Optional[float] = None
     axbxc_unitary_error: Optional[float] = None
     error_message: Optional[str] = None
+
+# --- Unified Optimization Schemas ---
+
+class OptimizeGateRequestSchema(BaseModel):
+    """Request to decompose a single gate for circuit optimization."""
+    gate_type: str
+    column: int
+    target_qubit: int
+    control_qubit: Optional[int] = None
+    matrix: Optional[List[List[ComplexNumberSchema]]] = None
+    params: Optional[Dict[str, float]] = None
+
+class OptimizeGateResultSchema(BaseModel):
+    """Result of a single-gate optimization / decomposition."""
+    success: bool
+    gates: List[DecomposedGateSchema] = Field(default_factory=list)
+    cu_gates: List[CUDecomposedGateSchema] = Field(default_factory=list)
+    is_cu: bool = False
+    error_message: Optional[str] = None
+

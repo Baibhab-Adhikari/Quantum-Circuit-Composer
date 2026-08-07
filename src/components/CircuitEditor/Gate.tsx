@@ -33,6 +33,7 @@ export default function Gate({ gate }: GateProps) {
 
   const isTargetSymbol = gate.type === 'CX' || gate.type === 'CCX';
   const isCUGate = gate.type === 'CU';
+  const isBridge = gate.type === 'B1' || gate.type === 'B2';
 
   const hasControls = gate.controls && gate.controls.length > 0;
 
@@ -98,9 +99,14 @@ export default function Gate({ gate }: GateProps) {
           isDragging ? 'opacity-30 cursor-grabbing' : 'hover:scale-110 cursor-grab'
         }`}
         style={{
-          backgroundColor: isTargetSymbol ? undefined : `color-mix(in oklch, ${def.color}, transparent 88%)`,
-          boxShadow: isTargetSymbol ? undefined : `0 2px 8px color-mix(in oklch, ${def.color}, transparent 80%)`,
-          outline: isTargetSymbol ? undefined : `1px solid ${def.color}`,
+          backgroundColor: isTargetSymbol ? undefined : isBridge
+            ? `color-mix(in oklch, ${def.color}, transparent 92%)`
+            : `color-mix(in oklch, ${def.color}, transparent 88%)`,
+          boxShadow: (isTargetSymbol || isBridge) ? undefined : `0 2px 8px color-mix(in oklch, ${def.color}, transparent 80%)`,
+          outline: isTargetSymbol ? undefined : isBridge
+            ? `1.5px dashed ${def.color}`
+            : `1px solid ${def.color}`,
+          borderRadius: isBridge ? '4px' : undefined,
         }}
       >
         {isTargetSymbol ? (
@@ -136,6 +142,13 @@ export default function Gate({ gate }: GateProps) {
               [ ]
             </span>
           </span>
+        ) : isBridge ? (
+          // Bridge scheduling placeholder
+          <div className="flex flex-col items-center justify-center" style={{ color: def.color }}>
+            <span className="text-[10px] font-medium font-mono leading-none italic opacity-80">
+              {def.abbreviation}
+            </span>
+          </div>
         ) : (
           // Standard Gate Box
           <div className="flex flex-col items-center justify-center" style={{ color: def.color }}>
@@ -153,7 +166,7 @@ export default function Gate({ gate }: GateProps) {
         {/* Action menu tooltip (Click-to-open) */}
         {activeActionMenuId === gate.id && (
           <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1 rounded bg-popover text-popover-foreground shadow-md transition-opacity z-50 border border-border">
-            {(def.isParameterized || def.isCustomUnitary || def.category === 'multi-qubit' || def.category === 'controlled-unitary') && (
+            {!isBridge && (def.isParameterized || def.isCustomUnitary || def.category === 'multi-qubit' || def.category === 'controlled-unitary') && (
               <button
                 className="p-1 rounded hover:bg-muted transition-colors"
                 onPointerDown={(e) => {

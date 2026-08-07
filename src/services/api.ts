@@ -150,3 +150,49 @@ export async function decomposeControlledUnitary(request: CUDecomposeRequest): P
     };
   }
 }
+
+// --- Unified Gate Optimization ---
+
+export interface OptimizeGateRequest {
+  gate_type: string;
+  column: number;
+  target_qubit: number;
+  control_qubit?: number;
+  matrix?: { real: number; imag: number }[][];
+  params?: Record<string, number>;
+}
+
+export interface OptimizeGateResult {
+  success: boolean;
+  gates: DecomposedGate[];
+  cu_gates: CUDecomposedGate[];
+  is_cu: boolean;
+  error_message?: string;
+}
+
+export async function optimizeGate(request: OptimizeGateRequest): Promise<OptimizeGateResult> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/optimize-gate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!res.ok) {
+      throw new Error(`API error: ${res.statusText}`);
+    }
+
+    return await res.json();
+  } catch (error: any) {
+    return {
+      success: false,
+      gates: [],
+      cu_gates: [],
+      is_cu: false,
+      error_message: error.message || 'Unknown error occurred',
+    };
+  }
+}
+

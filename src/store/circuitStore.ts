@@ -5,6 +5,9 @@ import { simulateCircuit, type SimulationResult } from '@/services/api';
 import { validatePlacement } from '@/utils/validation';
 import { toast } from 'sonner';
 
+/** Bridge operation types used as scheduling placeholders */
+const BRIDGE_TYPES: GateType[] = ['B1', 'B2'];
+
 /** Default number of qubits and columns */
 const DEFAULT_NUM_QUBITS = 2;
 const DEFAULT_NUM_COLUMNS = 10;
@@ -58,6 +61,21 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
   removeQubit: () =>
     set((state) => {
       if (state.qubits.length <= 1) return state; // minimum 1 qubit
+      
+      const lastQubitRow = state.qubits.length - 1;
+      const isOccupied = state.operations.some(op => 
+        op.targets.some(t => t.row === lastQubitRow) || 
+        op.controls.some(c => c.row === lastQubitRow)
+      );
+
+      if (isOccupied) {
+        toast.error('Cannot remove qubit wire', {
+          description: 'The bottom qubit wire contains operations. Remove them first.',
+          duration: 3000,
+        });
+        return state;
+      }
+
       return {
         qubits: state.qubits.slice(0, -1),
       };
@@ -72,9 +90,28 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
   },
 
   setNumColumns: (n: number) =>
-    set(() => ({
-      numColumns: Math.max(1, n),
-    })),
+    set((state) => {
+      const newNumColumns = Math.max(1, n);
+      
+      if (newNumColumns < state.numColumns) {
+        const isOccupied = state.operations.some(op => 
+          op.targets.some(t => t.col >= newNumColumns) || 
+          op.controls.some(c => c.col >= newNumColumns)
+        );
+
+        if (isOccupied) {
+          toast.error('Cannot reduce circuit depth', {
+            description: 'There are operations in the columns you are trying to remove. Remove them first.',
+            duration: 3000,
+          });
+          return state;
+        }
+      }
+
+      return {
+        numColumns: newNumColumns,
+      };
+    }),
 
   setZoom: (z: number) =>
     set(() => ({
@@ -574,4 +611,312 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       }
       return state;
     }),
+
+  insertBridges: () => {
+    const state = get();
+    
+    // 1. Strip existing bridges (idempotent pass)
+    let ops = state.operations.filter(op => !BRIDGE_TYPES.includes(op.type as GateType)).map(op => ({
+      ...op,
+      targets: op.targets.map(t => ({ ...t })),
+      controls: op.controls.map(c => ({ ...c })),
+    }));
+    let numCols = state.numColumns;
+
+    if (ops.length === 0) {
+      toast.info('No gates found', {
+        description: 'Add some gates to the circuit first.',
+        duration: 3000,
+      });
+      return;
+    }
+
+    let c = 0;
+    let bridgesInserted = 0;
+
+    while (true) {
+      // Find all gates at column c
+      const gatesAtC = ops.filter(op => op.targets.some(t => t.col === c) || op.controls.some(ctrl => ctrl.col === c));
+      
+      if (gatesAtC.length === 0) {
+        const maxCol = ops.reduce((max, op) => Math.max(max, ...op.targets.map(t => t.col), ...op.controls.map(ctrl => ctrl.col)), -1);
+        if (c > maxCol) break;
+        c++;
+        continue;
+      }
+      
+      // For each gate at column c, does it need a bridge?
+      const requiredBridges: { row: number, type: GateType }[] = [];
+      const processedRows = new Set<number>();
+      
+      for (const gate of gatesAtC) {
+        const rows = [...gate.targets, ...gate.controls].map(n => n.row);
+        for (const r of rows) {
+          if (processedRows.has(r)) continue;
+          
+          // Is there a preceding gate on row r?
+          const hasPreceding = ops.some(op => 
+            op.id !== gate.id &&
+            [...op.targets, ...op.controls].some(n => n.row === r && n.col < c)
+          );
+          
+          if (hasPreceding) {
+            requiredBridges.push({
+              row: r,
+              type: gate.type === 'Measure' ? 'B2' : 'B1'
+            });
+            processedRows.add(r);
+          }
+        }
+      }
+      
+      if (requiredBridges.length > 0) {
+        let needsShift = false;
+        if (c === 0) {
+          needsShift = true;
+        } else {
+          for (const b of requiredBridges) {
+            const isOccupied = ops.some(op => 
+              [...op.targets, ...op.controls].some(n => n.row === b.row && n.col === c - 1)
+            );
+            if (isOccupied) {
+              needsShift = true;
+              break;
+            }
+          }
+        }
+        
+        if (needsShift) {
+          // Shift column c and all subsequent columns to the right by 1
+          ops = ops.map(op => {
+            const inShiftZone = [...op.targets, ...op.controls].some(n => n.col >= c);
+            if (inShiftZone) {
+              return {
+                ...op,
+                targets: op.targets.map(t => t.col >= c ? { ...t, col: t.col + 1 } : t),
+                controls: op.controls.map(ctrl => ctrl.col >= c ? { ...ctrl, col: ctrl.col + 1 } : ctrl)
+              };
+            }
+            return op;
+          });
+          
+          for (const b of requiredBridges) {
+            ops.push({
+              id: `bridge-${Date.now()}-${bridgesInserted}`,
+              type: b.type,
+              targets: [{ row: b.row, col: c }],
+              controls: []
+            });
+            bridgesInserted++;
+          }
+          c += 2; // skip the column of gates we just shifted
+        } else {
+          for (const b of requiredBridges) {
+            ops.push({
+              id: `bridge-${Date.now()}-${bridgesInserted}`,
+              type: b.type,
+              targets: [{ row: b.row, col: c - 1 }],
+              controls: []
+            });
+            bridgesInserted++;
+          }
+          c += 1;
+        }
+      } else {
+        c++;
+      }
+    }
+
+    if (bridgesInserted === 0) {
+      toast.info('No delays needed', {
+        description: 'Circuit is already correctly scheduled.',
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Update numColumns if needed
+    const maxCol = ops.reduce((max, op) => Math.max(max, ...op.targets.map(t => t.col), ...op.controls.map(c => c.col), 0), 0);
+    if (maxCol >= numCols) {
+      numCols = maxCol + 1;
+    }
+
+    set({ numColumns: numCols });
+    get()._pushHistory(ops);
+
+    toast.success(`Inserted ${bridgesInserted} delay${bridgesInserted > 1 ? 's' : ''}`, {
+      duration: 3000,
+    });
+  },
+
+  optimizeCircuit: async () => {
+    const state = get();
+
+    // Gate types eligible for decomposition via the unified endpoint
+    const DECOMPOSABLE_SINGLE: GateType[] = ['H', 'X', 'Y', 'Z', 'S', 'T', 'U'];
+    const DECOMPOSABLE_CU: GateType[] = ['CU'];
+    const ALL_DECOMPOSABLE = [...DECOMPOSABLE_SINGLE, ...DECOMPOSABLE_CU];
+
+    // Step 1: Strip existing bridges for idempotency
+    let ops = state.operations
+      .filter(op => !BRIDGE_TYPES.includes(op.type as GateType))
+      .map(op => ({
+        ...op,
+        targets: op.targets.map(t => ({ ...t })),
+        controls: op.controls.map(c => ({ ...c })),
+      }));
+
+    if (ops.length === 0) {
+      toast.info('Nothing to optimise', {
+        description: 'Add some gates to the circuit first.',
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Step 2: Find gates that still need decomposition (skip Rx, Ry, Rz, CX, CCX, Measure)
+    const toDecompose = ops.filter(op => ALL_DECOMPOSABLE.includes(op.type));
+
+    // If nothing to decompose, just re-run delay insertion
+    if (toDecompose.length === 0) {
+      // Still need to commit stripped bridges + re-insert delays
+      let numCols = state.numColumns;
+      const maxCol = ops.reduce((max, op) =>
+        Math.max(max, ...op.targets.map(t => t.col), ...op.controls.map(c => c.col), 0), 0);
+      if (maxCol >= numCols) numCols = maxCol + 1;
+
+      set({ numColumns: numCols });
+      get()._pushHistory(ops);
+      get().insertBridges();
+
+      toast.success('Circuit optimised!', {
+        description: 'Delays re-inserted.',
+        duration: 3000,
+      });
+      return;
+    }
+
+    set({ isSimulating: true });
+
+    try {
+      const { optimizeGate } = await import('@/services/api');
+
+      let numCols = state.numColumns;
+
+      // Process gates from right to left (descending column) so that
+      // column-shifting doesn't invalidate positions of gates we haven't
+      // processed yet.
+      const sortedToDecompose = [...toDecompose].sort((a, b) => {
+        const colA = Math.min(...a.targets.map(t => t.col));
+        const colB = Math.min(...b.targets.map(t => t.col));
+        return colB - colA;
+      });
+
+      for (const gate of sortedToDecompose) {
+        // Re-find gate in (possibly shifted) ops array
+        const currentGate = ops.find(op => op.id === gate.id);
+        if (!currentGate) continue;
+
+        const targetQubit = currentGate.targets[0].row;
+        const startCol = currentGate.targets[0].col;
+        const isCU = currentGate.type === 'CU';
+        const controlQubit = isCU && currentGate.controls.length > 0
+          ? currentGate.controls[0].row : undefined;
+
+        // Call unified endpoint
+        const res = await optimizeGate({
+          gate_type: currentGate.type,
+          column: startCol,
+          target_qubit: targetQubit,
+          control_qubit: controlQubit,
+          matrix: currentGate.matrix,
+          params: currentGate.params,
+        });
+
+        if (!res.success) {
+          toast.error(`Failed to optimise ${currentGate.type}`, {
+            description: res.error_message || 'Unknown error',
+            duration: 4000,
+          });
+          continue;
+        }
+
+        // Build decomposed GateInstances
+        let decomposedInstances: GateInstance[];
+        let numDecomposedCols: number;
+
+        if (res.is_cu) {
+          numDecomposedCols = 7;
+          decomposedInstances = res.cu_gates.map((g, i) => ({
+            id: `${currentGate.id}-opt-${i}-${Date.now()}`,
+            type: g.type as GateType,
+            targets: [{ row: g.target_qubit, col: g.column }],
+            controls: g.control_qubit !== undefined && g.control_qubit !== null
+              ? [{ row: g.control_qubit, col: g.column }]
+              : [],
+            params: g.params,
+          }));
+        } else {
+          numDecomposedCols = 3;
+          decomposedInstances = res.gates.map((g, i) => ({
+            id: `${currentGate.id}-opt-${i}-${Date.now()}`,
+            type: g.type as GateType,
+            targets: [{ row: targetQubit, col: g.column }],
+            controls: [],
+            params: g.params,
+          }));
+        }
+
+        // Shift conflicting gates to the right
+        const affectedRows = isCU && controlQubit !== undefined
+          ? new Set([targetQubit, controlQubit])
+          : new Set([targetQubit]);
+
+        const shift = numDecomposedCols - 1; // Original gate occupies 1 col
+        ops = ops.map(op => {
+          if (op.id === currentGate.id) return op;
+          const hasConflict = [...op.targets, ...op.controls].some(
+            n => affectedRows.has(n.row) && n.col >= startCol && n.col < startCol + numDecomposedCols
+          );
+          if (!hasConflict) return op;
+          return {
+            ...op,
+            targets: op.targets.map(t => ({ ...t, col: t.col + shift })),
+            controls: op.controls.map(c => ({ ...c, col: c.col + shift })),
+          };
+        });
+
+        // Remove the original gate, add decomposed instances
+        ops = ops.filter(op => op.id !== currentGate.id);
+        ops.push(...decomposedInstances);
+
+        // Update numColumns if needed
+        const maxCol = ops.reduce((max, op) =>
+          Math.max(max, ...op.targets.map(t => t.col), ...op.controls.map(c => c.col), 0),
+        0);
+        if (maxCol >= numCols) {
+          numCols = maxCol + 1;
+        }
+      }
+
+      // Commit the decomposed circuit (before delay insertion)
+      set({ numColumns: numCols });
+      get()._pushHistory(ops);
+
+      // Now insert delays on top of the decomposed circuit
+      get().insertBridges();
+
+      toast.success('Circuit optimised!', {
+        description: `Decomposed ${sortedToDecompose.length} gate${sortedToDecompose.length > 1 ? 's' : ''} and inserted delays.`,
+        duration: 4000,
+      });
+    } catch (e: any) {
+      toast.error('Optimisation failed', {
+        description: e.message,
+        duration: 4000,
+      });
+    } finally {
+      set({ isSimulating: false });
+    }
+  },
 }));

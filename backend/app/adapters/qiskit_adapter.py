@@ -28,6 +28,11 @@ class QiskitAdapter:
             target_indices = [t.row for t in op.targets]
             control_indices = [c.row for c in op.controls]
             
+            # Bridge operations (B1, B2) are scheduling placeholders
+            # and do not correspond to any quantum gate — skip them.
+            if op.type in ('B1', 'B2'):
+                continue
+
             # Map frontend GateType to Qiskit gates
             if op.type == 'H':
                 for t in target_indices:

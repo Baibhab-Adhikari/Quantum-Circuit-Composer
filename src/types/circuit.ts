@@ -1,8 +1,8 @@
 /** Supported quantum gate types */
-export type GateType = 'H' | 'X' | 'Y' | 'Z' | 'S' | 'T' | 'CX' | 'CCX' | 'Measure' | 'Rx' | 'Ry' | 'Rz' | 'U' | 'CU';
+export type GateType = 'H' | 'X' | 'Y' | 'Z' | 'S' | 'T' | 'CX' | 'CCX' | 'Measure' | 'Rx' | 'Ry' | 'Rz' | 'U' | 'CU' | 'B1' | 'B2';
 
 /** Gate category for organizing in the palette */
-export type GateCategory = 'single-qubit' | 'multi-qubit' | 'measurement' | 'parameterized' | 'custom-unitary' | 'controlled-unitary';
+export type GateCategory = 'single-qubit' | 'multi-qubit' | 'measurement' | 'parameterized' | 'custom-unitary' | 'controlled-unitary' | 'bridge';
 
 import type { SimulationResult } from '@/services/api';
 
@@ -110,4 +110,6 @@ export interface CircuitActions {
   redo: () => void;
   _pushHistory: (newOperations: GateInstance[]) => void;
   runSimulation: () => Promise<void>;
+  insertBridges: () => void;
+  optimizeCircuit: () => Promise<void>;
 }
