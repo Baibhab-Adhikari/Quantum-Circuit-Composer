@@ -99,3 +99,33 @@ class OptimizeGateResultSchema(BaseModel):
     is_cu: bool = False
     error_message: Optional[str] = None
 
+
+# --- QUA Compilation Schemas ---
+
+class QUAConfigSchema(BaseModel):
+    """Hardware configuration options for QUA code generation."""
+    config_variant: str = "standard"
+    n_avg: int = 1024
+
+class QUAWarningSchema(BaseModel):
+    """A warning emitted during QUA compilation."""
+    gate_id: str
+    gate_type: str
+    type: str  # "decomposed" | "unsupported-multi-qubit"
+    message: str
+
+class QUACompileRequestSchema(BaseModel):
+    """Request to compile a circuit into QUA code."""
+    qubits: List[QubitSchema]
+    operations: List[GateInstanceSchema]
+    numColumns: int
+    config: QUAConfigSchema = Field(default_factory=QUAConfigSchema)
+
+class QUACompileResultSchema(BaseModel):
+    """Result of QUA compilation."""
+    success: bool
+    code: str = ""
+    warnings: List[QUAWarningSchema] = Field(default_factory=list)
+    placeholder_gates: List[str] = Field(default_factory=list)
+    error_message: Optional[str] = None
+

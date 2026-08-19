@@ -84,6 +84,7 @@ export interface CircuitState {
   quaPreviewCode: string | null;
   quaWarnings: QUAWarning[];
   quaPlaceholderGates: string[];
+  isCircuitOptimized: boolean;
 }
 
 /** Actions available on the circuit store */
@@ -127,6 +128,6 @@ export interface CircuitActions {
   // QUA generation actions
   setQuaConfigVariant: (variant: QUAConfigVariant) => void;
   setQuaNAvg: (nAvg: number) => void;
-  generateQuaPreview: () => void;
-  dumpQUA: () => void;
+  generateQuaPreview: () => Promise<void>;
+  dumpQUA: () => Promise<void>;
 }

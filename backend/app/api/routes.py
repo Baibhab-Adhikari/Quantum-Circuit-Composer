@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, HTTPException
 from typing import List
 from app.schemas.circuit import (
@@ -9,19 +10,26 @@ from app.schemas.circuit import (
     CUDecomposeResultSchema,
     OptimizeGateRequestSchema,
     OptimizeGateResultSchema,
-    ComplexNumberSchema
+    ComplexNumberSchema,
+    QUACompileRequestSchema,
+    QUACompileResultSchema,
 )
 from app.services.simulation import SimulationService
 from app.services.decomposition import DecompositionService
 from app.services.cu_decomposition import CUDecompositionService
 from app.services.optimization import OptimizationService
 from app.services.validation import validate_unitarity
+from app.serializers.qua import QUASerializer
+
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 simulation_service = SimulationService()
 decomposition_service = DecompositionService()
 cu_decomposition_service = CUDecompositionService()
 optimization_service = OptimizationService()
+qua_serializer = QUASerializer()
 
 @router.get("/health")
 async def health_check():
@@ -65,12 +73,8 @@ async def decompose_cu_gate(request: CUDecomposeRequestSchema):
 async def optimize_gate(request: OptimizeGateRequestSchema):
     """
     Unified gate optimization endpoint.
-
-    Accepts a gate type (e.g. 'H', 'X', 'U', 'CU') and returns the
-    decomposed gate sequence. For standard named gates, the backend
-    resolves their canonical unitary matrix internally. For U and CU
-    gates, the user-supplied matrix is used.
     """
+    logger.info(f"Received optimization request for gate_type {request.gate_type}")
     try:
         # CU gate — delegate to the existing CU decomposition service
         if request.gate_type == 'CU':
@@ -127,4 +131,24 @@ async def validate_matrix(matrix: List[List[ComplexNumberSchema]]):
         return {"valid": is_valid, "reason": msg if not is_valid else None}
     except Exception as e:
         return {"valid": False, "reason": str(e)}
+
+@router.post("/compile-qua", response_model=QUACompileResultSchema)
+async def compile_qua(request: QUACompileRequestSchema):
+    """
+    Compile a circuit into a runnable QUA (Quantum Machines) Python program.
+
+    Accepts the circuit IR (qubits, operations, numColumns) and a QUA config
+    (config_variant, n_avg), and returns the compiled QUA code along with any
+    warnings and placeholder gate identifiers.
+    """
+    logger.info(f"Received QUA compilation request for variant {request.config.config_variant} with {len(request.operations)} operations")
+    result = qua_serializer.serialize(request)
+    
+    if result.success:
+        logger.info(f"QUA compilation successful. Generated {len(result.code)} chars of code. Warnings: {len(result.warnings)}, Placeholders: {len(result.placeholder_gates)}")
+    else:
+        logger.error(f"QUA compilation failed: {result.error_message}")
+        
+    return result
+
 

@@ -196,3 +196,54 @@ export async function optimizeGate(request: OptimizeGateRequest): Promise<Optimi
   }
 }
 
+// --- QUA Compilation ---
+
+export interface QUACompileRequest {
+  qubits: QubitState[];
+  operations: GateInstance[];
+  numColumns: number;
+  config: {
+    config_variant: string;
+    n_avg: number;
+  };
+}
+
+export interface QUACompileResult {
+  success: boolean;
+  code: string;
+  warnings: {
+    gate_id: string;
+    gate_type: string;
+    type: 'decomposed' | 'unsupported-multi-qubit';
+    message: string;
+  }[];
+  placeholder_gates: string[];
+  error_message?: string;
+}
+
+export async function compileQUA(request: QUACompileRequest): Promise<QUACompileResult> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/compile-qua`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!res.ok) {
+      throw new Error(`API error: ${res.statusText}`);
+    }
+
+    return await res.json();
+  } catch (error: any) {
+    return {
+      success: false,
+      code: '',
+      warnings: [],
+      placeholder_gates: [],
+      error_message: error.message || 'Unknown error occurred',
+    };
+  }
+}
+

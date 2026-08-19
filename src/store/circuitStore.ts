@@ -1,10 +1,9 @@
 import { create } from 'zustand';
 import type { CircuitState, CircuitActions, GateType, QubitState, GateInstance } from '@/types/circuit';
 import { GATE_MAP } from '@/constants/gates';
-import { simulateCircuit, type SimulationResult } from '@/services/api';
+import { simulateCircuit, type SimulationResult, compileQUA, optimizeGate } from '@/services/api';
 import { validatePlacement } from '@/utils/validation';
 import { toast } from 'sonner';
-import { compileToQUA } from '@/utils/quaCompiler';
 
 /** Bridge operation types used as scheduling placeholders */
 const BRIDGE_TYPES: GateType[] = ['B1', 'B2'];
@@ -59,6 +58,7 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
   quaPreviewCode: null,
   quaWarnings: [],
   quaPlaceholderGates: [],
+  isCircuitOptimized: false,
 
   // Actions
   addQubit: () =>
@@ -583,6 +583,7 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       quaPreviewCode: null,
       quaWarnings: [],
       quaPlaceholderGates: [],
+  isCircuitOptimized: false,
     })),
 
   _pushHistory: (newOperations) =>
@@ -596,7 +597,8 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
         history: newHistory,
         historyIndex: newHistory.length - 1,
         operations: newOperations,
-      };
+        isCircuitOptimized: false,
+  };
     }),
 
   undo: () =>
@@ -606,7 +608,8 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
         return {
           historyIndex: newIndex,
           operations: state.history[newIndex],
-        };
+          isCircuitOptimized: false,
+  };
       }
       return state;
     }),
@@ -809,145 +812,117 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       return op;
     });
 
-    // Step 2b: Find gates that still need decomposition (skip Rx, Ry, Rz, CX, CCX, Measure)
-    const toDecompose = ops.filter(op => ALL_DECOMPOSABLE.includes(op.type));
-
-    // If nothing to decompose, just re-run delay insertion
-    if (toDecompose.length === 0) {
-      // Still need to commit stripped bridges + re-insert delays
-      let numCols = state.numColumns;
-      const maxCol = ops.reduce((max, op) =>
-        Math.max(max, ...op.targets.map(t => t.col), ...op.controls.map(c => c.col), 0), 0);
-      if (maxCol >= numCols) numCols = maxCol + 1;
-
-      set({ numColumns: numCols });
-      get()._pushHistory(ops);
-      get().insertBridges();
-
-      toast.success('Circuit optimised!', {
-        description: 'Delays re-inserted.',
-        duration: 3000,
-      });
-      return;
-    }
-
     set({ isSimulating: true });
 
     try {
-      const { optimizeGate } = await import('@/services/api');
-
-      let numCols = state.numColumns;
-
-      // Process gates from right to left (descending column) so that
-      // column-shifting doesn't invalidate positions of gates we haven't
-      // processed yet.
-      const sortedToDecompose = [...toDecompose].sort((a, b) => {
-        const colA = Math.min(...a.targets.map(t => t.col));
-        const colB = Math.min(...b.targets.map(t => t.col));
-        return colB - colA;
-      });
-
-      for (const gate of sortedToDecompose) {
-        // Re-find gate in (possibly shifted) ops array
-        const currentGate = ops.find(op => op.id === gate.id);
-        if (!currentGate) continue;
-
-        const targetQubit = currentGate.targets[0].row;
-        const startCol = currentGate.targets[0].col;
-        const isCU = currentGate.type === 'CU';
-        const controlQubit = isCU && currentGate.controls.length > 0
-          ? currentGate.controls[0].row : undefined;
-
-        // Call unified endpoint
-        const res = await optimizeGate({
-          gate_type: currentGate.type,
-          column: startCol,
-          target_qubit: targetQubit,
-          control_qubit: controlQubit,
-          matrix: currentGate.matrix,
-          params: currentGate.params,
-        });
-
-        if (!res.success) {
-          toast.error(`Failed to optimise ${currentGate.type}`, {
-            description: res.error_message || 'Unknown error',
-            duration: 4000,
-          });
-          continue;
-        }
-
-        // Build decomposed GateInstances
-        let decomposedInstances: GateInstance[];
-        let numDecomposedCols: number;
-
-        if (res.is_cu) {
-          numDecomposedCols = 7;
-          decomposedInstances = res.cu_gates.map((g, i) => ({
-            id: `${currentGate.id}-opt-${i}-${Date.now()}`,
-            type: g.type as GateType,
-            targets: [{ row: g.target_qubit, col: g.column }],
-            controls: g.control_qubit !== undefined && g.control_qubit !== null
-              ? [{ row: g.control_qubit, col: g.column }]
-              : [],
-            params: g.params,
-          }));
-        } else {
-          numDecomposedCols = 3;
-          decomposedInstances = res.gates.map((g, i) => ({
-            id: `${currentGate.id}-opt-${i}-${Date.now()}`,
-            type: g.type as GateType,
-            targets: [{ row: targetQubit, col: g.column }],
-            controls: [],
-            params: g.params,
-          }));
-        }
-
-        // Shift conflicting gates to the right
-        const affectedRows = isCU && controlQubit !== undefined
-          ? new Set([targetQubit, controlQubit])
-          : new Set([targetQubit]);
-
-        const shift = numDecomposedCols - 1; // Original gate occupies 1 col
-        ops = ops.map(op => {
-          if (op.id === currentGate.id) return op;
-          const hasConflict = [...op.targets, ...op.controls].some(
-            n => affectedRows.has(n.row) && n.col >= startCol && n.col < startCol + numDecomposedCols
-          );
-          if (!hasConflict) return op;
-          return {
-            ...op,
-            targets: op.targets.map(t => ({ ...t, col: t.col + shift })),
-            controls: op.controls.map(c => ({ ...c, col: c.col + shift })),
-          };
-        });
-
-        // Remove the original gate, add decomposed instances
-        ops = ops.filter(op => op.id !== currentGate.id);
-        ops.push(...decomposedInstances);
-
-        // Update numColumns if needed
-        const maxCol = ops.reduce((max, op) =>
-          Math.max(max, ...op.targets.map(t => t.col), ...op.controls.map(c => c.col), 0),
-        0);
-        if (maxCol >= numCols) {
-          numCols = maxCol + 1;
-        }
+      /*
+       * A column is the unit of the user-authored schedule.  When a gate is
+       * expanded, its column gains extra slots and every later operation moves
+       * by the same amount.  Moving individual rows here would split atomic
+       * multi-qubit gates and destroy relationships such as parallel measures.
+       */
+      const operationsByColumn = new Map<number, GateInstance[]>();
+      for (const gate of ops) {
+        const column = gate.targets[0].col;
+        const gatesAtColumn = operationsByColumn.get(column) ?? [];
+        gatesAtColumn.push(gate);
+        operationsByColumn.set(column, gatesAtColumn);
       }
 
-      // Commit the decomposed circuit (before delay insertion)
-      set({ numColumns: numCols });
-      get()._pushHistory(ops);
+      const originalColumns = [...operationsByColumn.keys()].sort((a, b) => a - b);
+      const optimizedOperations: GateInstance[] = [];
+      let accumulatedShift = 0;
+      let decomposedGateCount = 0;
 
-      // Now insert delays on top of the decomposed circuit
+      for (const originalColumn of originalColumns) {
+        const expandedColumn = originalColumn + accumulatedShift;
+        const gatesAtColumn = operationsByColumn.get(originalColumn) ?? [];
+
+        const results = await Promise.all(gatesAtColumn.map(async (gate) => {
+          const positionedGate: GateInstance = {
+            ...gate,
+            targets: gate.targets.map(target => ({ ...target, col: target.col + accumulatedShift })),
+            controls: gate.controls.map(control => ({ ...control, col: control.col + accumulatedShift })),
+          };
+
+          if (!ALL_DECOMPOSABLE.includes(gate.type)) {
+            return { gates: [positionedGate], width: 1, decomposed: false };
+          }
+
+          const targetQubit = gate.targets[0].row;
+          const controlQubit = gate.type === 'CU' ? gate.controls[0]?.row : undefined;
+          const result = await optimizeGate({
+            gate_type: gate.type,
+            column: expandedColumn,
+            target_qubit: targetQubit,
+            control_qubit: controlQubit,
+            matrix: gate.matrix,
+            params: gate.params,
+          });
+
+          if (!result.success) {
+            toast.error(`Failed to optimise ${gate.type}`, {
+              description: result.error_message || 'Unknown error',
+              duration: 4000,
+            });
+            return { gates: [positionedGate], width: 1, decomposed: false };
+          }
+
+          if (result.is_cu) {
+            return {
+              gates: result.cu_gates.map((decomposedGate, index) => ({
+                id: `${gate.id}-opt-${index}-${Date.now()}`,
+                type: decomposedGate.type as GateType,
+                targets: [{ row: decomposedGate.target_qubit, col: decomposedGate.column }],
+                controls: decomposedGate.control_qubit !== undefined && decomposedGate.control_qubit !== null
+                  ? [{ row: decomposedGate.control_qubit, col: decomposedGate.column }]
+                  : [],
+                params: decomposedGate.params,
+              })),
+              width: 7,
+              decomposed: true,
+            };
+          }
+
+          return {
+            gates: result.gates.map((decomposedGate, index) => ({
+              id: `${gate.id}-opt-${index}-${Date.now()}`,
+              type: decomposedGate.type as GateType,
+              targets: [{ row: targetQubit, col: decomposedGate.column }],
+              controls: [],
+              params: decomposedGate.params,
+            })),
+            width: 3,
+            decomposed: true,
+          };
+        }));
+
+        const columnWidth = Math.max(1, ...results.map(result => result.width));
+        optimizedOperations.push(...results.flatMap(result => result.gates));
+        decomposedGateCount += results.filter(result => result.decomposed).length;
+        accumulatedShift += columnWidth - 1;
+      }
+
+      const maxColumn = optimizedOperations.reduce((max, gate) =>
+        Math.max(max, ...gate.targets.map(target => target.col), ...gate.controls.map(control => control.col)),
+      0);
+      const numColumns = Math.max(state.numColumns, maxColumn + 1);
+
+      // Commit before inserting bridges, then let the bridge pass build on the
+      // normalized schedule. _pushHistory correctly invalidates optimization,
+      // so set the flag only after the full pass has completed.
+      set({ numColumns });
+      get()._pushHistory(optimizedOperations);
       get().insertBridges();
+      set({ isCircuitOptimized: true });
 
       toast.success('Circuit optimised!', {
-        description: `Decomposed ${sortedToDecompose.length} gate${sortedToDecompose.length > 1 ? 's' : ''} and inserted delays.`,
+        description: `Decomposed ${decomposedGateCount} gate${decomposedGateCount === 1 ? '' : 's'} and inserted delays.`,
         duration: 4000,
       });
-    } catch (e: any) {
+    } catch (error: unknown) {
       toast.error('Optimisation failed', {
-        description: e.message,
+        description: error instanceof Error ? error.message : 'Unknown error',
         duration: 4000,
       });
     } finally {
@@ -965,23 +940,52 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     set({ quaNAvg: Math.max(1, nAvg), quaPreviewCode: null });
   },
 
-  generateQuaPreview: () => {
-    const { operations, qubits, numColumns, quaConfigVariant, quaNAvg } = get();
+  setIsCircuitOptimized: (isCircuitOptimized: boolean) => set({ isCircuitOptimized }),
 
-    const result = compileToQUA(operations, qubits, numColumns, {
-      configVariant: quaConfigVariant,
-      nAvg: quaNAvg,
+  generateQuaPreview: async () => {
+    const { operations, qubits, numColumns, quaConfigVariant, quaNAvg, isCircuitOptimized } = get();
+
+    if (!isCircuitOptimized) {
+      toast.error('Optimization required', {
+        description: 'Please optimize the circuit before generating QUA code.',
+        duration: 4000,
+      });
+      return;
+    }
+
+    set({ quaPreviewCode: null, quaWarnings: [], quaPlaceholderGates: [] });
+    const result = await compileQUA({
+      operations,
+      qubits,
+      numColumns,
+      config: {
+        config_variant: quaConfigVariant,
+        n_avg: quaNAvg,
+      }
     });
+
+    if (!result.success) {
+      toast.error('QUA generation failed', {
+        description: result.error_message,
+        duration: 5000,
+      });
+      return;
+    }
 
     set({
       quaPreviewCode: result.code,
-      quaWarnings: result.warnings,
-      quaPlaceholderGates: result.placeholderGates,
+      quaWarnings: result.warnings.map(w => ({
+        gateId: w.gate_id,
+        gateType: w.gate_type,
+        type: w.type as 'decomposed' | 'unsupported-multi-qubit',
+        message: w.message
+      })),
+      quaPlaceholderGates: result.placeholder_gates,
     });
 
-    if (result.placeholderGates.length > 0) {
+    if (result.placeholder_gates.length > 0) {
       toast.warning('QUA code generated with placeholders', {
-        description: `${result.placeholderGates.length} gate(s) require custom macros before hardware execution.`,
+        description: `${result.placeholder_gates.length} gate(s) require custom macros before hardware execution.`,
         duration: 5000,
       });
     } else {
@@ -991,22 +995,46 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     }
   },
 
-  dumpQUA: () => {
-    const { operations, qubits, numColumns, quaConfigVariant, quaNAvg } = get();
+  dumpQUA: async () => {
+    const { operations, qubits, numColumns, quaConfigVariant, quaNAvg, isCircuitOptimized } = get();
 
-    const result = compileToQUA(operations, qubits, numColumns, {
-      configVariant: quaConfigVariant,
-      nAvg: quaNAvg,
+    if (!isCircuitOptimized) {
+      toast.error('Optimization required', {
+        description: 'Please optimize the circuit before dumping QUA code.',
+        duration: 4000,
+      });
+      return;
+    }
+
+    const result = await compileQUA({
+      operations,
+      qubits,
+      numColumns,
+      config: {
+        config_variant: quaConfigVariant,
+        n_avg: quaNAvg,
+      }
     });
 
-    // Also update preview state
+    if (!result.success) {
+      toast.error('QUA dump generation failed', {
+        description: result.error_message,
+        duration: 5000,
+      });
+      return;
+    }
+
     set({
       quaPreviewCode: result.code,
-      quaWarnings: result.warnings,
-      quaPlaceholderGates: result.placeholderGates,
+      quaWarnings: result.warnings.map(w => ({
+        gateId: w.gate_id,
+        gateType: w.gate_type,
+        type: w.type as 'decomposed' | 'unsupported-multi-qubit',
+        message: w.message
+      })),
+      quaPlaceholderGates: result.placeholder_gates,
     });
 
-    // Download as .py file
     const blob = new Blob([result.code], { type: 'text/x-python' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1017,9 +1045,9 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    if (result.placeholderGates.length > 0) {
+    if (result.placeholder_gates.length > 0) {
       toast.warning('QUA file downloaded with placeholders', {
-        description: `${result.placeholderGates.length} gate(s) require custom macros. See file header for details.`,
+        description: `${result.placeholder_gates.length} gate(s) require custom macros. See file header for details.`,
         duration: 5000,
       });
     } else {
