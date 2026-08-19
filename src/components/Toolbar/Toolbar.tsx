@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip';
-import type { QUAConfigVariant } from '@/types/circuit';
+
 
 /** SVG icon components for the toolbar */
 function IconPlus({ className }: { className?: string }) {
@@ -100,21 +100,12 @@ function IconClose({ className }: { className?: string }) {
   );
 }
 
-/** Config variant display labels */
-const CONFIG_LABELS: Record<QUAConfigVariant, string> = {
-  'standard': 'Standard IQ',
-  'octave': 'Octave',
-  'lf-fem': 'LF-FEM',
-  'lf-fem-mw-fem': 'LF+MW FEM',
-};
-
 export default function Toolbar() {
   const {
     qubits, addQubit, removeQubit, resetCircuit,
     numColumns, setNumColumns, zoom, setZoom,
     undo, redo, history, historyIndex,
     optimizeCircuit, dumpQUA, generateQuaPreview, isSimulating,
-    quaConfigVariant, setQuaConfigVariant,
     quaNAvg, setQuaNAvg,
   } = useCircuitStore();
   const { theme, toggleTheme } = useTheme();
@@ -309,20 +300,6 @@ export default function Toolbar() {
 
         {/* QUA Export Group */}
         <div className="flex items-center gap-1.5 mr-2 border-r border-border pr-3">
-          {/* Config variant selector */}
-          <div title="Target hardware configuration">
-            <select
-              id="qua-config-select"
-              value={quaConfigVariant}
-              onChange={(e) => setQuaConfigVariant(e.target.value as QUAConfigVariant)}
-              className="h-7 text-xs bg-muted border border-border rounded px-1.5 text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              {(Object.keys(CONFIG_LABELS) as QUAConfigVariant[]).map((key) => (
-                <option key={key} value={key}>{CONFIG_LABELS[key]}</option>
-              ))}
-            </select>
-          </div>
-
           {/* Shots input */}
           <div className="flex items-center gap-1" title="Averaging shots (n_avg)">
             <span className="text-xs text-muted-foreground select-none hidden lg:inline">Shots</span>
