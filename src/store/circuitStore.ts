@@ -4,6 +4,7 @@ import { GATE_MAP } from '@/constants/gates';
 import { simulateCircuit, type SimulationResult } from '@/services/api';
 import { validatePlacement } from '@/utils/validation';
 import { toast } from 'sonner';
+import { compileToQUA } from '@/utils/quaCompiler';
 
 /** Bridge operation types used as scheduling placeholders */
 const BRIDGE_TYPES: GateType[] = ['B1', 'B2'];
@@ -51,6 +52,13 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
 
   // UI state
   activeActionMenuId: null,
+
+  // QUA generation state
+  quaConfigVariant: 'standard',
+  quaNAvg: 1024,
+  quaPreviewCode: null,
+  quaWarnings: [],
+  quaPlaceholderGates: [],
 
   // Actions
   addQubit: () =>
@@ -572,6 +580,9 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       pendingUnitaryGate: null,
       pendingMultiQubitGate: null,
       pendingCUGate: null,
+      quaPreviewCode: null,
+      quaWarnings: [],
+      quaPlaceholderGates: [],
     })),
 
   _pushHistory: (newOperations) =>
@@ -753,7 +764,9 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     const state = get();
 
     // Gate types eligible for decomposition via the unified endpoint
-    const DECOMPOSABLE_SINGLE: GateType[] = ['H', 'X', 'Y', 'Z', 'S', 'T', 'U'];
+    // X and Y are handled locally (X → Rx(π), Y → Ry(π)) and are NOT
+    // sent to the backend for ZYZ decomposition.
+    const DECOMPOSABLE_SINGLE: GateType[] = ['H', 'Z', 'S', 'T', 'U'];
     const DECOMPOSABLE_CU: GateType[] = ['CU'];
     const ALL_DECOMPOSABLE = [...DECOMPOSABLE_SINGLE, ...DECOMPOSABLE_CU];
 
@@ -774,7 +787,29 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
       return;
     }
 
-    // Step 2: Find gates that still need decomposition (skip Rx, Ry, Rz, CX, CCX, Measure)
+    // Step 2a: Local decomposition — X → Rx(π), Y → Ry(π)
+    // These are trivially equivalent and should NOT be ZYZ-decomposed.
+    ops = ops.map(op => {
+      if (op.type === 'X') {
+        return {
+          ...op,
+          id: `${op.id}-rx-${Date.now()}`,
+          type: 'Rx' as GateType,
+          params: { theta: Math.PI },
+        };
+      }
+      if (op.type === 'Y') {
+        return {
+          ...op,
+          id: `${op.id}-ry-${Date.now()}`,
+          type: 'Ry' as GateType,
+          params: { theta: Math.PI },
+        };
+      }
+      return op;
+    });
+
+    // Step 2b: Find gates that still need decomposition (skip Rx, Ry, Rz, CX, CCX, Measure)
     const toDecompose = ops.filter(op => ALL_DECOMPOSABLE.includes(op.type));
 
     // If nothing to decompose, just re-run delay insertion
@@ -920,80 +955,78 @@ export const useCircuitStore = create<CircuitState & CircuitActions>((set, get) 
     }
   },
 
+  // --- QUA generation actions ---
+
+  setQuaConfigVariant: (variant) => {
+    set({ quaConfigVariant: variant, quaPreviewCode: null });
+  },
+
+  setQuaNAvg: (nAvg) => {
+    set({ quaNAvg: Math.max(1, nAvg), quaPreviewCode: null });
+  },
+
+  generateQuaPreview: () => {
+    const { operations, qubits, numColumns, quaConfigVariant, quaNAvg } = get();
+
+    const result = compileToQUA(operations, qubits, numColumns, {
+      configVariant: quaConfigVariant,
+      nAvg: quaNAvg,
+    });
+
+    set({
+      quaPreviewCode: result.code,
+      quaWarnings: result.warnings,
+      quaPlaceholderGates: result.placeholderGates,
+    });
+
+    if (result.placeholderGates.length > 0) {
+      toast.warning('QUA code generated with placeholders', {
+        description: `${result.placeholderGates.length} gate(s) require custom macros before hardware execution.`,
+        duration: 5000,
+      });
+    } else {
+      toast.success('QUA code generated!', {
+        duration: 3000,
+      });
+    }
+  },
+
   dumpQUA: () => {
-    const { operations, numColumns } = get();
-    
-    let quaCode = `# ----------------------------------------------------
-# Quantum Circuit Composer
-# Temporary QUA Preview Export
-#
-# This file is intended as an intermediate preview.
-#
-# Scheduling placeholders (B1/B2) are intentionally
-# emitted as comments because they do not yet map to
-# concrete QUA timing instructions.
-#
-# A future QUA adapter will translate these editor
-# operations into align()/wait() logic.
-# ----------------------------------------------------
+    const { operations, qubits, numColumns, quaConfigVariant, quaNAvg } = get();
 
-from qm.qua import *
+    const result = compileToQUA(operations, qubits, numColumns, {
+      configVariant: quaConfigVariant,
+      nAvg: quaNAvg,
+    });
 
-with program() as quantum_circuit:
-`;
-    let hasOperations = false;
+    // Also update preview state
+    set({
+      quaPreviewCode: result.code,
+      quaWarnings: result.warnings,
+      quaPlaceholderGates: result.placeholderGates,
+    });
 
-    // Filter to only single-qubit operations
-    const singleQubitOps = operations.filter(op => op.controls.length === 0);
-
-    for (let c = 0; c < numColumns; c++) {
-      // Find operations in this column
-      const opsInCol = singleQubitOps.filter(op => op.targets.some(t => t.col === c));
-      
-      if (opsInCol.length > 0) {
-        if (hasOperations) {
-          quaCode += "\n";
-        }
-        quaCode += `    # Column ${c}\n\n`;
-        for (const op of opsInCol) {
-          const row = op.targets[0].row;
-          const element = `q${row}`;
-          
-          if (op.type === 'Measure') {
-            quaCode += `    # Placeholder measurement.
-    # Integration weights, outputs and processing
-    # will be supplied by the future QUA adapter.
-    measure("readout", "${element}", None)\n`;
-          } else if (op.type === 'B1') {
-            quaCode += `    # B1 Bridge (Scheduling Placeholder)\n`;
-          } else if (op.type === 'B2') {
-            quaCode += `    # B2 Bridge (Scheduling Placeholder)\n`;
-          } else {
-            quaCode += `    play("${op.type}", "${element}")\n`;
-          }
-          hasOperations = true;
-        }
-      }
-    }
-
-    if (!hasOperations) {
-      quaCode += "    pass\n";
-    }
-
-    // Create a Blob and trigger download
-    const blob = new Blob([quaCode], { type: "text/plain" });
+    // Download as .py file
+    const blob = new Blob([result.code], { type: 'text/x-python' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
-    a.download = "qua_dump.txt";
+    a.download = 'qua_circuit.py';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast.success("QUA dump generated!", {
-      description: "qua_dump.txt has been downloaded.",
-      duration: 3000,
-    });
+    if (result.placeholderGates.length > 0) {
+      toast.warning('QUA file downloaded with placeholders', {
+        description: `${result.placeholderGates.length} gate(s) require custom macros. See file header for details.`,
+        duration: 5000,
+      });
+    } else {
+      toast.success('QUA program downloaded!', {
+        description: 'qua_circuit.py is ready.',
+        duration: 3000,
+      });
+    }
   },
 }));

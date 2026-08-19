@@ -4,7 +4,11 @@ export type GateType = 'H' | 'X' | 'Y' | 'Z' | 'S' | 'T' | 'CX' | 'CCX' | 'Measu
 /** Gate category for organizing in the palette */
 export type GateCategory = 'single-qubit' | 'multi-qubit' | 'measurement' | 'parameterized' | 'custom-unitary' | 'controlled-unitary' | 'bridge';
 
+/** QUA hardware configuration variant */
+export type QUAConfigVariant = 'standard' | 'octave' | 'lf-fem' | 'lf-fem-mw-fem';
+
 import type { SimulationResult } from '@/services/api';
+import type { QUAWarning } from '@/utils/quaCompiler';
 
 /** Position on the circuit grid */
 export interface GridPosition {
@@ -73,6 +77,13 @@ export interface CircuitState {
 
   // UI state
   activeActionMenuId: string | null;
+
+  // QUA generation state
+  quaConfigVariant: QUAConfigVariant;
+  quaNAvg: number;
+  quaPreviewCode: string | null;
+  quaWarnings: QUAWarning[];
+  quaPlaceholderGates: string[];
 }
 
 /** Actions available on the circuit store */
@@ -112,5 +123,10 @@ export interface CircuitActions {
   runSimulation: () => Promise<void>;
   insertBridges: () => void;
   optimizeCircuit: () => Promise<void>;
+
+  // QUA generation actions
+  setQuaConfigVariant: (variant: QUAConfigVariant) => void;
+  setQuaNAvg: (nAvg: number) => void;
+  generateQuaPreview: () => void;
   dumpQUA: () => void;
 }
