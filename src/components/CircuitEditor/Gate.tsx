@@ -5,6 +5,7 @@ import type { GateInstance } from '@/types/circuit';
 import { GATE_MAP } from '@/constants/gates';
 import { useDraggable } from '@dnd-kit/core';
 import { formatAngle } from '@/utils/validation';
+import { isDecomposedForQUA, isUnsupportedMultiQubit } from '@/utils/quaCompiler';
 
 interface GateProps {
   gate: GateInstance;
@@ -34,6 +35,10 @@ export default function Gate({ gate }: GateProps) {
   const isTargetSymbol = gate.type === 'CX' || gate.type === 'CCX';
   const isCUGate = gate.type === 'CU';
   const isBridge = gate.type === 'B1' || gate.type === 'B2';
+
+  // QUA warning badge classification
+  const showDecomposedBadge = isDecomposedForQUA(gate.type);
+  const showUnsupportedBadge = isUnsupportedMultiQubit(gate.type);
 
   const hasControls = gate.controls && gate.controls.length > 0;
 
@@ -219,6 +224,24 @@ export default function Gate({ gate }: GateProps) {
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
+          </div>
+        )}
+
+        {/* QUA warning badge — top-right indicator */}
+        {showDecomposedBadge && (
+          <div
+            className="absolute -top-1 -right-1 size-3 rounded-full bg-amber-500 border border-amber-600 shadow-sm flex items-center justify-center z-20"
+            title="Will be decomposed into native QUA pulses (ZYZ)"
+          >
+            <span className="text-[6px] font-bold text-white leading-none">Z</span>
+          </div>
+        )}
+        {showUnsupportedBadge && (
+          <div
+            className="absolute -top-1 -right-1 size-3 rounded-full bg-red-500 border border-red-600 shadow-sm flex items-center justify-center z-20"
+            title="⚠ Requires custom calibration — not natively supported by QUA"
+          >
+            <span className="text-[6px] font-bold text-white leading-none">!</span>
           </div>
         )}
       </div>

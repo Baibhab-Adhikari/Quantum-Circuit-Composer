@@ -5,7 +5,10 @@ import { Button } from '@/components/ui/button';
 import { CodeViewer } from '@/components/ui/CodeViewer';
 
 export default function Inspector() {
-  const { isSimulating, simulationResult, runSimulation, operations } = useCircuitStore();
+  const {
+    isSimulating, simulationResult, runSimulation, operations,
+    quaPreviewCode, quaWarnings, quaPlaceholderGates, generateQuaPreview,
+  } = useCircuitStore();
 
   return (
     <div className="w-[450px] border-l border-border bg-card flex flex-col overflow-y-auto shrink-0">
@@ -165,7 +168,82 @@ export default function Inspector() {
             </section>
           </div>
         )}
+
+        {/* ─── QUA Code Generation ─── */}
+        <div className="border-t border-border pt-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">QUA Code</h3>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={generateQuaPreview}
+            >
+              <svg className="size-3.5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+              </svg>
+              Generate Preview
+            </Button>
+          </div>
+
+          {/* QUA Warnings */}
+          {quaWarnings.length > 0 && (
+            <div className="space-y-1.5">
+              {quaWarnings.filter(w => w.type === 'unsupported-multi-qubit').length > 0 && (
+                <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-md">
+                  <p className="text-xs text-red-600 dark:text-red-400 font-medium">⚠ Custom Calibration Required</p>
+                  <ul className="text-xs text-red-500/80 mt-1 space-y-0.5">
+                    {quaWarnings.filter(w => w.type === 'unsupported-multi-qubit').map((w, i) => (
+                      <li key={i}>• {w.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {quaWarnings.filter(w => w.type === 'decomposed').length > 0 && (
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">ℹ Gates Decomposed</p>
+                  <ul className="text-xs text-amber-500/80 mt-1 space-y-0.5">
+                    {quaWarnings.filter(w => w.type === 'decomposed').map((w, i) => (
+                      <li key={i}>• {w.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Placeholder gates summary */}
+          {quaPlaceholderGates.length > 0 && (
+            <div className="p-2.5 bg-muted/50 border border-border/50 rounded-md">
+              <p className="text-xs text-muted-foreground font-medium">Placeholder gates needing macros:</p>
+              <ul className="text-xs font-mono text-muted-foreground mt-1 space-y-0.5">
+                {quaPlaceholderGates.map((pg, i) => (
+                  <li key={i}>• {pg}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* QUA code viewer */}
+          {quaPreviewCode && (
+            <CodeViewer code={quaPreviewCode} language="python" title="qua_circuit.py" />
+          )}
+
+          {!quaPreviewCode && (
+            <div className="p-6 rounded-md border border-dashed border-border/50 flex flex-col items-center justify-center text-center">
+              <svg className="size-8 text-muted-foreground/40 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+              </svg>
+              <p className="text-xs text-muted-foreground">
+                Click &quot;Generate Preview&quot; to compile your circuit into QUA code
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+

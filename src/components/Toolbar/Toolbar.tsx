@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip';
+import type { QUAConfigVariant } from '@/types/circuit';
 
 /** SVG icon components for the toolbar */
 function IconPlus({ className }: { className?: string }) {
@@ -99,8 +100,23 @@ function IconClose({ className }: { className?: string }) {
   );
 }
 
+/** Config variant display labels */
+const CONFIG_LABELS: Record<QUAConfigVariant, string> = {
+  'standard': 'Standard IQ',
+  'octave': 'Octave',
+  'lf-fem': 'LF-FEM',
+  'lf-fem-mw-fem': 'LF+MW FEM',
+};
+
 export default function Toolbar() {
-  const { qubits, addQubit, removeQubit, resetCircuit, numColumns, setNumColumns, zoom, setZoom, undo, redo, history, historyIndex, optimizeCircuit, dumpQUA, isSimulating } = useCircuitStore();
+  const {
+    qubits, addQubit, removeQubit, resetCircuit,
+    numColumns, setNumColumns, zoom, setZoom,
+    undo, redo, history, historyIndex,
+    optimizeCircuit, dumpQUA, generateQuaPreview, isSimulating,
+    quaConfigVariant, setQuaConfigVariant,
+    quaNAvg, setQuaNAvg,
+  } = useCircuitStore();
   const { theme, toggleTheme } = useTheme();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -291,22 +307,52 @@ export default function Toolbar() {
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        <Tooltip>
-          <TooltipTrigger
-            className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-            onClick={() => dumpQUA()}
-          >
-            <svg className="size-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <span className="text-xs hidden sm:inline">Dump QUA</span>
-          </TooltipTrigger>
-          <TooltipContent>Export single-qubit operations as QUA script</TooltipContent>
-        </Tooltip>
+        {/* QUA Export Group */}
+        <div className="flex items-center gap-1.5 mr-2 border-r border-border pr-3">
+          {/* Config variant selector */}
+          <div title="Target hardware configuration">
+            <select
+              id="qua-config-select"
+              value={quaConfigVariant}
+              onChange={(e) => setQuaConfigVariant(e.target.value as QUAConfigVariant)}
+              className="h-7 text-xs bg-muted border border-border rounded px-1.5 text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {(Object.keys(CONFIG_LABELS) as QUAConfigVariant[]).map((key) => (
+                <option key={key} value={key}>{CONFIG_LABELS[key]}</option>
+              ))}
+            </select>
+          </div>
 
-        <div className="w-px h-5 bg-border mx-1" />
+          {/* Shots input */}
+          <div className="flex items-center gap-1" title="Averaging shots (n_avg)">
+            <span className="text-xs text-muted-foreground select-none hidden lg:inline">Shots</span>
+            <input
+              id="qua-shots-input"
+              type="number"
+              min={1}
+              max={1000000}
+              value={quaNAvg}
+              onChange={(e) => setQuaNAvg(parseInt(e.target.value) || 1)}
+              className="h-7 w-16 text-xs font-mono bg-muted border border-border rounded px-1.5 text-foreground text-center focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          {/* Dump QUA button */}
+          <Tooltip>
+            <TooltipTrigger
+              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+              onClick={() => dumpQUA()}
+            >
+              <svg className="size-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span className="text-xs hidden sm:inline">Dump QUA</span>
+            </TooltipTrigger>
+            <TooltipContent>Download generated QUA program as .py file</TooltipContent>
+          </Tooltip>
+        </div>
 
         <Tooltip>
           <TooltipTrigger
@@ -336,3 +382,4 @@ export default function Toolbar() {
     </header>
   );
 }
+
