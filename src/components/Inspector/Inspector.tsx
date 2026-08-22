@@ -1,17 +1,91 @@
 'use client';
 
+import { useRef, useState } from 'react';
 import { useCircuitStore } from '@/store/circuitStore';
 import { Button } from '@/components/ui/button';
 import { CodeViewer } from '@/components/ui/CodeViewer';
 
+const DEFAULT_PANEL_WIDTH = 450;
+const MIN_PANEL_WIDTH = 320;
+const MAX_PANEL_WIDTH = 800;
+
 export default function Inspector() {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const activeResizePointerId = useRef<number | null>(null);
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
+  const [isResizing, setIsResizing] = useState(false);
   const {
     isSimulating, simulationResult, runSimulation, operations,
     quaPreviewCode, quaWarnings, quaPlaceholderGates, generateQuaPreview,
   } = useCircuitStore();
 
+  const clampPanelWidth = (width: number) => {
+    const maxWidth = Math.min(MAX_PANEL_WIDTH, window.innerWidth * 0.7);
+    return Math.min(Math.max(width, MIN_PANEL_WIDTH), maxWidth);
+  };
+
+  const handleResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+
+    event.preventDefault();
+    activeResizePointerId.current = event.pointerId;
+    setIsResizing(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleResizeMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const isActiveDrag = activeResizePointerId.current === event.pointerId && (event.buttons & 1) === 1;
+    if (!isActiveDrag || !panelRef.current) return;
+
+    const panelRight = panelRef.current.getBoundingClientRect().right;
+    setPanelWidth(clampPanelWidth(panelRight - event.clientX));
+  };
+
+  const handleResizeEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (activeResizePointerId.current !== event.pointerId) return;
+
+    activeResizePointerId.current = null;
+    setIsResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handleResizeLostCapture = () => {
+    activeResizePointerId.current = null;
+    setIsResizing(false);
+  };
+
+  const handleResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+
+    event.preventDefault();
+    const adjustment = event.key === 'ArrowLeft' ? 20 : -20;
+    setPanelWidth(width => clampPanelWidth(width + adjustment));
+  };
+
   return (
-    <div className="w-[450px] border-l border-border bg-card flex flex-col overflow-y-auto shrink-0">
+    <div
+      ref={panelRef}
+      className="relative flex min-h-0 w-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-card md:w-[var(--inspector-width)]"
+      style={{ '--inspector-width': `${panelWidth}px` } as React.CSSProperties}
+    >
+      <div
+        className={`absolute inset-y-0 -left-1 z-20 hidden w-2 touch-none cursor-col-resize md:block ${isResizing ? 'bg-primary/20' : 'hover:bg-primary/10'}`}
+        role="separator"
+        aria-label="Resize quantum analysis panel"
+        aria-orientation="vertical"
+        aria-valuemin={MIN_PANEL_WIDTH}
+        aria-valuemax={MAX_PANEL_WIDTH}
+        aria-valuenow={panelWidth}
+        tabIndex={0}
+        onPointerDown={handleResizeStart}
+        onPointerMove={handleResizeMove}
+        onPointerUp={handleResizeEnd}
+        onPointerCancel={handleResizeEnd}
+        onLostPointerCapture={handleResizeLostCapture}
+        onKeyDown={handleResizeKeyDown}
+      />
       <div className="p-4 border-b border-border">
         <h2 className="text-lg font-semibold tracking-tight">Quantum Analysis</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -19,7 +93,7 @@ export default function Inspector() {
         </p>
       </div>
 
-      <div className="p-4 space-y-8 flex-1">
+      <div className="min-h-0 flex-1 space-y-8 overflow-y-auto p-4">
         {/* Simulation Action */}
         <div className="space-y-3">
           <Button 
@@ -246,4 +320,3 @@ export default function Inspector() {
     </div>
   );
 }
-

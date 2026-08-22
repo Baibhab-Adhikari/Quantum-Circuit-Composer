@@ -25,7 +25,7 @@ export function CodeViewer({ code, language = 'python', title }: CodeViewerProps
   };
 
   return (
-    <div className="rounded-md border border-border/50 overflow-hidden bg-[#1e1e1e] group relative">
+    <div className="min-w-0 rounded-md border border-border/50 overflow-hidden bg-[#1e1e1e] group relative">
       <div className="flex items-center justify-between px-3 py-1.5 bg-[#252526] border-b border-[#3c3c3c]">
         <span className="text-xs font-mono text-[#cccccc]">{title || language}</span>
         <Button 
@@ -47,11 +47,25 @@ export function CodeViewer({ code, language = 'python', title }: CodeViewerProps
           )}
         </Button>
       </div>
-      <div className="overflow-x-auto text-xs font-mono leading-relaxed m-0">
+      <div className="min-w-0 overflow-x-hidden text-xs font-mono leading-relaxed m-0">
         <SyntaxHighlighter 
           language={language} 
           style={nightOwl} 
-          customStyle={{ margin: 0, padding: '0.75rem', background: 'transparent' }}
+          wrapLongLines
+          customStyle={{
+            margin: 0,
+            padding: '0.75rem',
+            background: 'transparent',
+            overflowWrap: 'anywhere',
+            whiteSpace: 'pre-wrap',
+          }}
+          codeTagProps={{
+            style: {
+              overflowWrap: 'anywhere',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            },
+          }}
         >
           {code}
         </SyntaxHighlighter>
