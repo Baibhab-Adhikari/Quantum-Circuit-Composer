@@ -285,7 +285,7 @@ def _compile_gate(
         lines.append(f'    dual_demod.full("rotated_cos", "rotated_sin", I),')
         lines.append(f'    dual_demod.full("rotated_minus_sin", "rotated_cos", Q),')
         lines.append(")")
-        lines.append("assign(state, I > ge_threshold)")
+        # lines.append("assign(state, I > ge_threshold)")  # Commented out — not needed as of now
         lines.append(f'wait(thermalization_time * u.ns, "{res_element}")')
 
     # ---------------------------------------------------------------

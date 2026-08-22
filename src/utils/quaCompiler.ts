@@ -306,7 +306,7 @@ function compileGate(
       lines.push(`    dual_demod.full("rotated_cos", "rotated_sin", I),`);
       lines.push(`    dual_demod.full("rotated_minus_sin", "rotated_cos", Q),`);
       lines.push(`)`);
-      lines.push(`assign(state, I > ge_threshold)`);
+      // lines.push(`assign(state, I > ge_threshold)`);  // Commented out — not needed as of now
       lines.push(`wait(thermalization_time * u.ns, "${resElement}")`);
       break;
     }
